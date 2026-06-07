@@ -5,7 +5,7 @@ const NAV_ITEMS = [
   { to: '/events',         label: 'Events',  icon: '🎪' },
   { to: '/recommendations',label: 'For You', icon: '✨' },
   { to: '/chat',           label: 'Chat',    icon: '💬' },
-  { to: '/calendar',       label: 'Calendar',icon: '📅' },
+  { to: '/profile',        label: 'Profile', icon: '👤' },
 ]
 
 export default function BottomNav() {

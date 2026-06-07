@@ -376,8 +376,8 @@ export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
-      {/* Sheet */}
-      <div className="relative bg-white rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl animate-slide-up max-w-md mx-auto w-full">
+      {/* Sheet — fixed height so flex-1 (messages) + flex-shrink-0 (input) distribute correctly */}
+      <div className="relative bg-white rounded-t-3xl flex flex-col shadow-2xl animate-slide-up max-w-md mx-auto w-full overflow-hidden" style={{ height: '82svh', maxHeight: '640px' }}>
         {/* Handle + header */}
         <div className="flex-shrink-0 px-5 pt-3 pb-3 border-b border-gray-100">
           <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-3" />

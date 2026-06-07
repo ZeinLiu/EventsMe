@@ -30,7 +30,10 @@ export async function chatWithWizard(messages) {
   }
 
   const data = await res.json()
-  const text = data.content?.[0]?.text?.trim()
+
+  if (data.error) throw new Error(data.error)
+
+  const text = data.text?.trim()
   if (!text) throw new Error('Empty response from Claude')
 
   const parsed = extractJson(text)

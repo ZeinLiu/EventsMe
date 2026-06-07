@@ -6,15 +6,16 @@ function extractJson(text) {
   try { return JSON.parse(match[0]) } catch { return null }
 }
 
+const EDGE_FUNCTION_URL = 'https://bwmwojuymggllrkckeid.supabase.co/functions/v1/claude-wizard'
+
 export async function chatWithWizard(messages) {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env')
+  if (!supabaseAnonKey) {
+    throw new Error('Missing VITE_SUPABASE_ANON_KEY in .env')
   }
 
-  const res = await fetch(`${supabaseUrl}/functions/v1/claude-wizard`, {
+  const res = await fetch(EDGE_FUNCTION_URL, {
     method: 'POST',
     headers: {
       'authorization': `Bearer ${supabaseAnonKey}`,

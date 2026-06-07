@@ -265,9 +265,11 @@ export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
   const [profile, setProfile] = useState(null)
   const [editForm, setEditForm] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [savedName, setSavedName] = useState('')
 
   const chatEndRef = useRef(null)
   const inputRef = useRef(null)
+  const savingRef = useRef(false) // guards against double-click
 
   useEffect(() => {
     if (isOpen) {
@@ -280,6 +282,8 @@ export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
       setProfile(null)
       setEditForm(null)
       setSaving(false)
+      setSavedName('')
+      savingRef.current = false
       setTimeout(() => inputRef.current?.focus(), 200)
     }
   }, [isOpen])
@@ -287,6 +291,14 @@ export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [displayMsgs, loading])
+
+  // Auto-close 1.5 s after success
+  useEffect(() => {
+    if (stage === 'success') {
+      const t = setTimeout(() => onClose(), 1500)
+      return () => clearTimeout(t)
+    }
+  }, [stage])
 
   async function sendMessage() {
     const text = input.trim()
@@ -327,7 +339,8 @@ export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
   }
 
   async function saveProfile(profileToSave) {
-    if (!user) return
+    if (!user || savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     setError('')
     try {
@@ -351,11 +364,13 @@ export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
         .single()
 
       if (dbErr) throw dbErr
-      onSaved(data)
-      onClose()
+      onSaved(data)           // adds member to Profile list immediately
+      setSavedName(data.name)
+      setStage('success')     // auto-close handled by useEffect
     } catch (err) {
       setError(err.message)
       setSaving(false)
+      savingRef.current = false
     }
   }
 
@@ -367,7 +382,7 @@ export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
     setStage('editing')
   }
 
-  const stageTitle = { chat: 'Add Family Member', preview: 'Profile Preview', editing: 'Edit Details' }
+  const stageTitle = { chat: 'Add Family Member', preview: 'Profile Preview', editing: 'Edit Details', success: 'All done!' }
 
   if (!isOpen) return null
 
@@ -452,6 +467,17 @@ export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
             onBack={() => setStage('preview')}
             onSave={() => saveProfile(editForm)}
           />
+        )}
+
+        {/* Success stage */}
+        {stage === 'success' && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+            <div className="text-6xl">🎉</div>
+            <h3 className="text-xl font-bold text-gray-900">
+              {savedName} added to your family!
+            </h3>
+            <p className="text-sm text-gray-400">Closing in a moment…</p>
+          </div>
         )}
       </div>
     </div>

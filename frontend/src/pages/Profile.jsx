@@ -237,12 +237,29 @@ export default function Profile() {
           </div>
         )}
 
-        <button
-          onClick={() => setWizardOpen(true)}
-          className="w-full border-2 border-dashed border-brand-200 text-brand-600 rounded-2xl py-3.5 text-sm font-medium hover:bg-brand-50 hover:border-brand-300 transition-colors flex items-center justify-center gap-2"
-        >
-          <span className="text-lg">+</span> Add Family Member
-        </button>
+        {members.length > 0 ? (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setWizardOpen(true)}
+              className="bg-brand-600 text-white rounded-2xl py-3 text-sm font-semibold hover:bg-brand-700 transition-colors flex items-center justify-center gap-1.5"
+            >
+              👨‍👩‍👧 Add Another
+            </button>
+            <button
+              onClick={() => setWizardOpen(true)}
+              className="border-2 border-dashed border-brand-200 text-brand-600 rounded-2xl py-3 text-sm font-medium hover:bg-brand-50 hover:border-brand-300 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <span className="text-base">+</span> New Member
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setWizardOpen(true)}
+            className="w-full border-2 border-dashed border-brand-200 text-brand-600 rounded-2xl py-3.5 text-sm font-medium hover:bg-brand-50 hover:border-brand-300 transition-colors flex items-center justify-center gap-2"
+          >
+            <span className="text-lg">+</span> Add Family Member
+          </button>
+        )}
       </section>
 
       {/* ── Preferences ── */}

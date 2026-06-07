@@ -372,7 +372,7 @@ export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+    <div className="fixed inset-0 z-[200] flex flex-col justify-end">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 

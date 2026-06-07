@@ -47,7 +47,7 @@ function EditMemberModal({ member, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+    <div className="fixed inset-0 z-[200] flex flex-col justify-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-white rounded-t-3xl flex flex-col shadow-2xl animate-slide-up max-w-md mx-auto w-full overflow-hidden" style={{ height: '82svh', maxHeight: '640px' }}>
         <div className="flex-shrink-0 px-5 pt-3 pb-3 border-b border-gray-100">

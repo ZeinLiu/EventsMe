@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
-import AuthCallback from './pages/AuthCallback'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import Events from './pages/Events'
@@ -21,6 +20,7 @@ function LoadingScreen() {
   )
 }
 
+// Shows spinner while session loads, then dashboard or /login
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <LoadingScreen />
@@ -47,7 +47,6 @@ function AppLayout({ children }) {
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route
         path="/login"
         element={

@@ -1,6 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { supabase } from './lib/supabase'
 import Login from './pages/Login'
+import AuthCallback from './pages/AuthCallback'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import Events from './pages/Events'
@@ -34,6 +37,28 @@ function PublicRoute({ children }) {
   return children
 }
 
+function AuthListener() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const path = window.location.pathname
+      if (session && (path === '/login' || path === '/auth/callback')) {
+        navigate('/', { replace: true })
+      }
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN') navigate('/', { replace: true })
+      else if (event === 'SIGNED_OUT') navigate('/login', { replace: true })
+    })
+
+    return () => subscription.unsubscribe()
+  }, [navigate])
+
+  return null
+}
+
 function AppLayout({ children }) {
   return (
     <div className="min-h-screen flex flex-col max-w-md mx-auto relative">
@@ -45,7 +70,10 @@ function AppLayout({ children }) {
 
 function AppRoutes() {
   return (
-    <Routes>
+    <>
+      <AuthListener />
+      <Routes>
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route
         path="/login"
         element={
@@ -104,6 +132,7 @@ function AppRoutes() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }
 

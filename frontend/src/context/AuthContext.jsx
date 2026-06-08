@@ -8,18 +8,14 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let initialised = false
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null
       setUser(currentUser)
-
-      // Set loading false after the first event fires (INITIAL_SESSION handles
-      // the OAuth code exchange, so this is always authoritative)
-      if (!initialised) {
-        setLoading(false)
-        initialised = true
-      }
 
       if (currentUser && event === 'SIGNED_IN') {
         const { data: existingProfile } = await supabase

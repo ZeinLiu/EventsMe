@@ -37,7 +37,7 @@ export default function Login() {
     setGoogleLoading(true)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: 'https://events-me.vercel.app' },
     })
     if (error) {
       setError(error.message)

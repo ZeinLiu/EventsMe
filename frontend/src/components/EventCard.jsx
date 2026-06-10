@@ -1,9 +1,9 @@
 const CATEGORY_COLORS = {
-  'Food & Lifestyle':   'bg-orange-100 text-orange-700',
-  'Arts & Culture':     'bg-purple-100 text-purple-700',
-  'Nature & Wildlife':  'bg-green-100 text-green-700',
-  'Cultural & National':'bg-red-100 text-red-700',
-  'Kids & Family':      'bg-blue-100 text-blue-700',
+  'Food & Lifestyle':    'bg-orange-100 text-orange-700',
+  'Arts & Culture':      'bg-purple-100 text-purple-700',
+  'Nature & Wildlife':   'bg-green-100 text-green-700',
+  'Cultural & National': 'bg-red-100 text-red-700',
+  'Kids & Family':       'bg-blue-100 text-blue-700',
 }
 
 function formatDateRange(start, end) {
@@ -13,9 +13,8 @@ function formatDateRange(start, end) {
   const opts = { day: 'numeric', month: 'short' }
   const optsYear = { day: 'numeric', month: 'short', year: 'numeric' }
   if (start === end) return s.toLocaleDateString('en-SG', optsYear)
-  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear())
     return `${s.getDate()}–${e.toLocaleDateString('en-SG', optsYear)}`
-  }
   return `${s.toLocaleDateString('en-SG', opts)} – ${e.toLocaleDateString('en-SG', optsYear)}`
 }
 
@@ -26,16 +25,22 @@ function PriceTag({ is_free, price_min, price_max }) {
   return <span className="text-xs font-semibold text-gray-700">From {label}</span>
 }
 
-export default function EventCard({ event }) {
-  // Support both old sample format (date/location/tags) and Supabase format
+export default function EventCard({ event, isSaved, isInCalendar, onWishlist, onCalendar, onSource, onDetail }) {
   const displayDate = event.event_date
     ? formatDateRange(event.event_date, event.event_end_date)
     : event.date
   const displayLocation = event.venue || event.location
   const catColor = CATEGORY_COLORS[event.category] ?? 'bg-gray-100 text-gray-600'
 
+  function stop(fn) {
+    return (e) => { e.stopPropagation(); fn?.() }
+  }
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div
+      className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden cursor-pointer active:opacity-90 transition-opacity"
+      onClick={onDetail}
+    >
       {event.image_url && (
         <img
           src={event.image_url}
@@ -46,12 +51,11 @@ export default function EventCard({ event }) {
       )}
 
       <div className="p-4 space-y-2.5">
-        {/* Category + price row */}
+        {/* Category + price */}
         <div className="flex items-center justify-between gap-2">
           {event.category
             ? <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${catColor}`}>{event.category}</span>
-            : <span />
-          }
+            : <span />}
           <PriceTag is_free={event.is_free} price_min={event.price_min} price_max={event.price_max} />
         </div>
 
@@ -80,20 +84,35 @@ export default function EventCard({ event }) {
           </div>
         )}
 
-        {/* Booking row */}
-        {event.booking_url && (
-          <div className="flex items-center justify-between pt-1 border-t border-gray-50">
-            <span className="text-xs text-gray-400">{event.source_name}</span>
-            <a
-              href={event.booking_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs font-semibold text-brand-600 hover:text-brand-700 transition-colors"
-            >
-              Book now →
-            </a>
-          </div>
-        )}
+        {/* Action buttons */}
+        <div className="flex gap-2 pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={stop(onWishlist)}
+            className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium rounded-xl border transition-colors ${
+              isSaved
+                ? 'border-red-300 bg-red-50 text-red-600'
+                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {isSaved ? '❤️' : '🤍'} Wishlist
+          </button>
+          <button
+            onClick={stop(onCalendar)}
+            className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium rounded-xl border transition-colors ${
+              isInCalendar
+                ? 'border-brand-300 bg-brand-50 text-brand-600'
+                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            📅 Calendar
+          </button>
+          <button
+            onClick={stop(onSource)}
+            className="flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            🔗 Source
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
       // Call Claude with web_search tool (retries automatically on 429)
       const claudeData = await callClaude({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
+        max_tokens: 2000,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         system: `You are an event discovery engine for Singapore. Search the web for events matching the query. Extract ALL events found and return ONLY a raw JSON array — no markdown, no code blocks, no backticks, no explanation. Start your response with [ and end with ].
 
@@ -190,7 +190,7 @@ Rules:
 - Only include real upcoming events with confirmed dates.
 - Skip past events.
 - Skip events outside Singapore.
-- Return minimum 3, maximum 8 events.
+- Return minimum 3, maximum 5 events.
 - Your entire response must be valid JSON. No text before [ or after ].`,
         messages: [{
           role: 'user',

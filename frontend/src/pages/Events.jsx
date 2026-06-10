@@ -1,6 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
 import EventCard from '../components/EventCard'
+import EventDetailSheet from '../components/EventDetailSheet'
+import CalendarBottomSheet from '../components/CalendarBottomSheet'
+import Toast from '../components/Toast'
 
 const TABS = [
   { label: 'All',           filter: () => true },
@@ -17,27 +21,71 @@ const TABS = [
 ]
 
 export default function Events() {
+  const { user } = useAuth()
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState('All')
 
+  const [savedIds, setSavedIds] = useState(new Set())
+  const [calendarIds, setCalendarIds] = useState(new Set())
+
+  const [detailEvent, setDetailEvent] = useState(null)
+  const [calendarEvent, setCalendarEvent] = useState(null)
+  const [toast, setToast] = useState(null)
+
+  function showToast(msg) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2500)
+  }
+
   useEffect(() => {
     async function load() {
       setLoading(true)
       setError('')
-      const { data, error: dbErr } = await supabase
-        .from('events')
-        .select('*')
-        .order('event_date', { ascending: true })
-      if (dbErr) {
-        setError(dbErr.message)
-      } else {
-        setEvents(data ?? [])
-      }
+
+      const [eventsRes, savedRes, calRes] = await Promise.all([
+        supabase.from('events').select('*').order('event_date', { ascending: true }),
+        user
+          ? supabase.from('saved_events').select('event_id').eq('user_id', user.id)
+          : Promise.resolve({ data: [] }),
+        user
+          ? supabase.from('calendar_entries').select('event_id').eq('user_id', user.id)
+          : Promise.resolve({ data: [] }),
+      ])
+
+      if (eventsRes.error) setError(eventsRes.error.message)
+      else setEvents(eventsRes.data ?? [])
+
+      setSavedIds(new Set((savedRes.data ?? []).map((r) => r.event_id)))
+      setCalendarIds(new Set((calRes.data ?? []).map((r) => r.event_id)))
       setLoading(false)
     }
     load()
+  }, [user])
+
+  const handleWishlist = useCallback(async (event) => {
+    if (!user) { showToast('Log in to save events'); return }
+    if (savedIds.has(event.id)) {
+      await supabase.from('saved_events')
+        .delete().eq('user_id', user.id).eq('event_id', event.id)
+      setSavedIds((prev) => { const s = new Set(prev); s.delete(event.id); return s })
+      showToast('Removed from wishlist')
+    } else {
+      await supabase.from('saved_events').insert({ user_id: user.id, event_id: event.id })
+      setSavedIds((prev) => new Set([...prev, event.id]))
+      showToast('Added to wishlist ❤️')
+    }
+  }, [user, savedIds])
+
+  const handleSource = useCallback((event) => {
+    if (!event.source_url) { showToast('No source link available'); return }
+    window.open(event.source_url, '_blank', 'noopener,noreferrer')
+  }, [])
+
+  const handleCalendarAdded = useCallback((event) => {
+    setCalendarIds((prev) => new Set([...prev, event.id]))
+    showToast('Added to your calendar! 📅')
   }, [])
 
   const activeFilter = TABS.find((t) => t.label === activeTab)?.filter ?? (() => true)
@@ -86,11 +134,46 @@ export default function Events() {
           <div className="space-y-4">
             <p className="text-xs text-gray-400">{filtered.length} event{filtered.length !== 1 ? 's' : ''}</p>
             {filtered.map((event) => (
-              <EventCard key={event.id} event={event} />
+              <EventCard
+                key={event.id}
+                event={event}
+                isSaved={savedIds.has(event.id)}
+                isInCalendar={calendarIds.has(event.id)}
+                onDetail={() => setDetailEvent(event)}
+                onWishlist={() => handleWishlist(event)}
+                onCalendar={() => setCalendarEvent(event)}
+                onSource={() => handleSource(event)}
+              />
             ))}
           </div>
         )}
       </div>
+
+      {/* Event detail sheet */}
+      {detailEvent && (
+        <EventDetailSheet
+          event={detailEvent}
+          isSaved={savedIds.has(detailEvent.id)}
+          isInCalendar={calendarIds.has(detailEvent.id)}
+          onClose={() => setDetailEvent(null)}
+          onWishlist={() => handleWishlist(detailEvent)}
+          onCalendar={() => { setDetailEvent(null); setCalendarEvent(detailEvent) }}
+          onSource={() => handleSource(detailEvent)}
+        />
+      )}
+
+      {/* Calendar bottom sheet */}
+      {calendarEvent && (
+        <CalendarBottomSheet
+          event={calendarEvent}
+          isInCalendar={calendarIds.has(calendarEvent.id)}
+          onClose={() => setCalendarEvent(null)}
+          onAdded={() => handleCalendarAdded(calendarEvent)}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && <Toast message={toast} />}
     </div>
   )
 }

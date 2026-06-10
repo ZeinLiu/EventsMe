@@ -30,6 +30,40 @@ interface EventData {
   source_name: string
 }
 
+// Call Claude API with automatic retry on 429 rate-limit errors.
+// Uses the retry-after header if Anthropic provides it, otherwise backs off by 30 s.
+async function callClaude(
+  body: object,
+  apiKey: string,
+  maxRetries = 3,
+): Promise<{ content: Array<{ type: string; text?: string }> }> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (res.status === 429 && attempt < maxRetries) {
+      const retryAfterSec = parseInt(res.headers.get('retry-after') ?? '30', 10)
+      await new Promise((r) => setTimeout(r, retryAfterSec * 1000))
+      continue
+    }
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Claude API ${res.status}: ${text}`)
+    }
+
+    return res.json()
+  }
+  throw new Error('Claude API: max retries exceeded')
+}
+
 // Extract a JSON array from Claude's text output.
 // Handles: raw array, markdown code block, array embedded in prose.
 function extractJson(text: string): EventData[] | null {
@@ -106,19 +140,12 @@ Deno.serve(async (req) => {
     try {
       const today = new Date().toISOString().split('T')[0]
 
-      // Call Claude with web_search tool
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': claudeApiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-5',
-          max_tokens: 4000,
-          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-          system: `You are an event discovery engine for Singapore. Search the web for events matching the query. Extract ALL events found and return ONLY a JSON array with no extra text.
+      // Call Claude with web_search tool (retries automatically on 429)
+      const claudeData = await callClaude({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 4000,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        system: `You are an event discovery engine for Singapore. Search the web for events matching the query. Extract ALL events found and return ONLY a JSON array with no extra text.
 
 Each event must have these fields:
 {
@@ -142,27 +169,21 @@ Only include real upcoming events with dates.
 Skip past events.
 Skip events outside Singapore.
 Return minimum 5, maximum 15 events per search.`,
-          messages: [{
-            role: 'user',
-            content: `Search for: ${source.value}\nToday's date: ${today}\nReturn only upcoming Singapore events as JSON array.`,
-          }],
-        }),
-      })
+        messages: [{
+          role: 'user',
+          content: `Search for: ${source.value}\nToday's date: ${today}\nReturn only upcoming Singapore events as JSON array.`,
+        }],
+      }, claudeApiKey)
 
-      if (!response.ok) {
-        const errText = await response.text()
-        throw new Error(`Claude API ${response.status}: ${errText}`)
-      }
+      // 3. Parse JSON array from Claude's text blocks.
+      // Web search adds preamble blocks — the JSON is always in the LAST text block.
+      const textBlocks: string[] = (claudeData.content ?? [])
+        .filter((b: { type: string }) => b.type === 'text')
+        .map((b: { type: string; text: string }) => b.text)
+      const combinedText = textBlocks.join('\n')
+      if (!combinedText.trim()) throw new Error('No text content in Claude response')
 
-      const claudeData = await response.json()
-
-      // 3. Parse JSON array from Claude's text block
-      const textBlock = claudeData.content?.find(
-        (b: { type: string }) => b.type === 'text',
-      )
-      if (!textBlock?.text) throw new Error('No text content in Claude response')
-
-      const events = extractJson(textBlock.text)
+      const events = extractJson(combinedText)
       if (!events) throw new Error('Could not parse JSON array from Claude response')
 
       // 4. Insert non-duplicate events
@@ -218,6 +239,9 @@ Return minimum 5, maximum 15 events per search.`,
       const msg = err instanceof Error ? err.message : String(err)
       results.push({ source: source.label, new_events: 0, error: msg })
     }
+
+    // Pause between sources to avoid Claude API rate limits
+    await new Promise((r) => setTimeout(r, 2000))
   }
 
   // 6. Return summary

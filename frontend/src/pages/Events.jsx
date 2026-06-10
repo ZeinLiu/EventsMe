@@ -6,6 +6,31 @@ import EventDetailSheet from '../components/EventDetailSheet'
 import CalendarBottomSheet from '../components/CalendarBottomSheet'
 import Toast from '../components/Toast'
 
+const SORT_OPTIONS = [
+  { key: 'date-asc',   label: 'Date',         sub: 'Soonest first', short: 'Date ↑' },
+  { key: 'date-desc',  label: 'Date',         sub: 'Latest first',  short: 'Date ↓' },
+  { key: 'price-asc',  label: 'Price',        sub: 'Low to high',   short: 'Price ↑' },
+  { key: 'price-desc', label: 'Price',        sub: 'High to low',   short: 'Price ↓' },
+  { key: 'newest',     label: 'Newest added', sub: '',              short: 'Newest' },
+]
+
+const SORT_FNS = {
+  'date-asc':  (a, b) => (a.event_date ?? '').localeCompare(b.event_date ?? ''),
+  'date-desc': (a, b) => (b.event_date ?? '').localeCompare(a.event_date ?? ''),
+  'price-asc': (a, b) => (a.price_min ?? 0) - (b.price_min ?? 0),
+  'price-desc':(a, b) => (b.price_max ?? 0) - (a.price_max ?? 0),
+  'newest':    (a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''),
+}
+
+// Null event_date always sorts to the bottom regardless of direction
+function sortWithNullsLast(fn) {
+  return (a, b) => {
+    if (a.event_date && !b.event_date) return -1
+    if (!a.event_date && b.event_date) return 1
+    return fn(a, b)
+  }
+}
+
 const TABS = [
   { label: 'All',           filter: () => true },
   { label: 'Free',          filter: (e) => e.is_free },
@@ -29,6 +54,9 @@ export default function Events() {
 
   const [savedIds, setSavedIds] = useState(new Set())
   const [calendarIds, setCalendarIds] = useState(new Set())
+
+  const [sortBy, setSortBy] = useState('date-asc')
+  const [sortOpen, setSortOpen] = useState(false)
 
   const [detailEvent, setDetailEvent] = useState(null)
   const [calendarEvent, setCalendarEvent] = useState(null)
@@ -89,7 +117,7 @@ export default function Events() {
   }, [])
 
   const activeFilter = TABS.find((t) => t.label === activeTab)?.filter ?? (() => true)
-  const filtered = events.filter(activeFilter)
+  const filtered = [...events.filter(activeFilter)].sort(sortWithNullsLast(SORT_FNS[sortBy] ?? SORT_FNS['date-asc']))
 
   return (
     <div className="pt-6 space-y-5">
@@ -132,7 +160,16 @@ export default function Events() {
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-xs text-gray-400">{filtered.length} event{filtered.length !== 1 ? 's' : ''}</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-400">{filtered.length} event{filtered.length !== 1 ? 's' : ''}</p>
+              <button
+                onClick={() => setSortOpen(true)}
+                className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <span className="text-gray-400">Sort:</span> {SORT_OPTIONS.find((o) => o.key === sortBy)?.short}
+                <span className="text-gray-400 text-[10px]">▾</span>
+              </button>
+            </div>
             {filtered.map((event) => (
               <EventCard
                 key={event.id}
@@ -170,6 +207,32 @@ export default function Events() {
           onClose={() => setCalendarEvent(null)}
           onAdded={() => handleCalendarAdded(calendarEvent)}
         />
+      )}
+
+      {/* Sort bottom sheet */}
+      {sortOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSortOpen(false)} />
+          <div className="relative bg-white rounded-t-2xl px-4 pt-4 pb-10 animate-slide-up">
+            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4" />
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Sort by</h3>
+            <div className="space-y-0.5">
+              {SORT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => { setSortBy(opt.key); setSortOpen(false) }}
+                  className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                >
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">{opt.label}</span>
+                    {opt.sub && <span className="text-xs text-gray-400 ml-2">{opt.sub}</span>}
+                  </div>
+                  {sortBy === opt.key && <span className="text-brand-600 text-sm font-bold">✓</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Toast */}

@@ -1,0 +1,36 @@
+name: Weekly Cleanup
+
+on:
+  schedule:
+    - cron: '0 19 * * 0'   # 7 pm UTC Sunday = 3 am SGT Monday
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Cleanup Duplicates
+        run: |
+          echo "=== Cleanup Duplicates ==="
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/cleanup-duplicates" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 300 \
+            | tee /tmp/cleanup.json
+          echo ""
+          cat /tmp/cleanup.json
+
+      - name: Archive Old Events
+        run: |
+          echo "=== Archive Old Events ==="
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/archive-events" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 30 \
+            | tee /tmp/archive.json
+          echo ""
+          cat /tmp/archive.json

@@ -45,7 +45,7 @@ export default function Events() {
       setError('')
 
       const [eventsRes, savedRes, calRes] = await Promise.all([
-        supabase.from('events').select('*').order('event_date', { ascending: true }),
+        supabase.from('events').select('*').eq('is_archived', false).order('event_date', { ascending: true }),
         user
           ? supabase.from('saved_events').select('event_id').eq('user_id', user.id)
           : Promise.resolve({ data: [] }),

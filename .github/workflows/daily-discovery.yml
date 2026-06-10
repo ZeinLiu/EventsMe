@@ -1,0 +1,110 @@
+name: Daily Event Discovery
+
+on:
+  schedule:
+    - cron: '0 18 * * *'   # 6 pm UTC = 2 am SGT (next day)
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Step 1 — Claude Discovery (AI web search)
+        continue-on-error: true
+        run: |
+          echo "=== Claude Discovery ==="
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/claude-discovery" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 120 \
+            | tee /tmp/claude_discovery.json
+          echo ""
+          echo "Status: $?"
+
+      - name: Wait 30 s
+        run: sleep 30
+
+      - name: Step 2 — RSS Discovery
+        continue-on-error: true
+        run: |
+          echo "=== RSS Discovery ==="
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/rss-discovery" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 180 \
+            | tee /tmp/rss_discovery.json
+          echo ""
+
+      - name: Wait 30 s
+        run: sleep 30
+
+      - name: Step 3 — Eventbrite Sync
+        continue-on-error: true
+        run: |
+          echo "=== Eventbrite Sync ==="
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/eventbrite-sync" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 120 \
+            | tee /tmp/eventbrite.json
+          echo ""
+
+      - name: Wait 30 s
+        run: sleep 30
+
+      - name: Step 4 — Ticketmaster Sync
+        continue-on-error: true
+        run: |
+          echo "=== Ticketmaster Sync ==="
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/ticketmaster-sync" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 120 \
+            | tee /tmp/ticketmaster.json
+          echo ""
+
+      - name: Wait 30 s
+        run: sleep 30
+
+      - name: Step 5 — SISTIC Sync
+        continue-on-error: true
+        run: |
+          echo "=== SISTIC Sync ==="
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/sistic-sync" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 120 \
+            | tee /tmp/sistic.json
+          echo ""
+
+      - name: Wait 30 s
+        run: sleep 30
+
+      - name: Step 6 — Cleanup Duplicates (always runs)
+        if: always()
+        run: |
+          echo "=== Cleanup Duplicates ==="
+          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/cleanup-duplicates" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 300 \
+            | tee /tmp/cleanup.json
+          echo ""
+
+      - name: Print summary
+        if: always()
+        run: |
+          echo "===== DISCOVERY SUMMARY ====="
+          for f in claude_discovery rss_discovery eventbrite ticketmaster sistic cleanup; do
+            echo "--- $f ---"
+            cat /tmp/${f}.json 2>/dev/null || echo "(no output)"
+            echo ""
+          done

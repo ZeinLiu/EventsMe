@@ -46,6 +46,7 @@ async function callClaude(
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(90_000),
     })
 
     if (res.status === 429 && attempt < maxRetries) {
@@ -59,7 +60,9 @@ async function callClaude(
       throw new Error(`Claude API ${res.status}: ${text}`)
     }
 
-    return res.json()
+    // Read response as text first to avoid memory blow-up on large payloads
+    const raw = await res.text()
+    return JSON.parse(raw)
   }
   throw new Error('Claude API: max retries exceeded')
 }
@@ -90,6 +93,16 @@ function extractJson(text: string): EventData[] | null {
     } catch { /* fall through */ }
   }
 
+  // Last resort: find outermost [ ... ] by index
+  const start = clean.indexOf('[')
+  const end = clean.lastIndexOf(']')
+  if (start !== -1 && end > start) {
+    try {
+      const parsed = JSON.parse(clean.slice(start, end + 1))
+      if (Array.isArray(parsed)) return parsed
+    } catch { /* fall through */ }
+  }
+
   return null
 }
 
@@ -111,12 +124,20 @@ Deno.serve(async (req) => {
     )
   }
 
+  // Optional ?limit= query param — default 5 sources per run to stay under
+  // the 150 s Edge Function timeout. Sources are ordered by last_run_at ASC
+  // (null first) so the least-recently-run ones are always processed first.
+  const url = new URL(req.url)
+  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '5', 10), 10)
+
   // 1. Read active AI search sources
   const { data: sources, error: sourcesError } = await supabase
     .from('discovery_sources')
     .select('*')
     .eq('type', 'ai_search')
     .eq('is_active', true)
+    .order('last_run_at', { ascending: true, nullsFirst: true })
+    .limit(limit)
 
   if (sourcesError) {
     return new Response(
@@ -142,15 +163,15 @@ Deno.serve(async (req) => {
 
       // Call Claude with web_search tool (retries automatically on 429)
       const claudeData = await callClaude({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4000,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        system: `You are an event discovery engine for Singapore. Search the web for events matching the query. Extract ALL events found and return ONLY a JSON array with no extra text.
+        system: `You are an event discovery engine for Singapore. Search the web for events matching the query. Extract ALL events found and return ONLY a raw JSON array — no markdown, no code blocks, no backticks, no explanation. Start your response with [ and end with ].
 
-Each event must have these fields:
+Each event object must have exactly these fields:
 {
   "title": "event name",
-  "description": "full description",
+  "description": "2-3 sentence description, max 60 words",
   "short_summary": "max 50 words, family focused",
   "category": "one of: Kids & Family, Arts & Culture, Food & Lifestyle, Nature & Wildlife, Education & Science, Music & Concerts, Sports & Fitness, Cultural & National, Arts & Performance",
   "event_date": "YYYY-MM-DD or null",
@@ -165,10 +186,12 @@ Each event must have these fields:
   "source_name": "website name"
 }
 
-Only include real upcoming events with dates.
-Skip past events.
-Skip events outside Singapore.
-Return minimum 5, maximum 15 events per search.`,
+Rules:
+- Only include real upcoming events with confirmed dates.
+- Skip past events.
+- Skip events outside Singapore.
+- Return minimum 3, maximum 8 events.
+- Your entire response must be valid JSON. No text before [ or after ].`,
         messages: [{
           role: 'user',
           content: `Search for: ${source.value}\nToday's date: ${today}\nReturn only upcoming Singapore events as JSON array.`,
@@ -176,15 +199,22 @@ Return minimum 5, maximum 15 events per search.`,
       }, claudeApiKey)
 
       // 3. Parse JSON array from Claude's text blocks.
-      // Web search adds preamble blocks — the JSON is always in the LAST text block.
+      // Web search prepends preamble blocks — the JSON is in the LAST text block.
       const textBlocks: string[] = (claudeData.content ?? [])
         .filter((b: { type: string }) => b.type === 'text')
         .map((b: { type: string; text: string }) => b.text)
-      const combinedText = textBlocks.join('\n')
-      if (!combinedText.trim()) throw new Error('No text content in Claude response')
+      if (!textBlocks.length) throw new Error('No text content in Claude response')
 
-      const events = extractJson(combinedText)
-      if (!events) throw new Error('Could not parse JSON array from Claude response')
+      // Try each block independently (last first), then fall back to joined text
+      let events: EventData[] | null = null
+      for (let i = textBlocks.length - 1; i >= 0; i--) {
+        events = extractJson(textBlocks[i])
+        if (events) break
+      }
+      if (!events) events = extractJson(textBlocks.join('\n'))
+      if (!events) throw new Error(
+        `Could not parse JSON array. Last block preview: ${textBlocks[textBlocks.length - 1].slice(0, 400)}`
+      )
 
       // 4. Insert non-duplicate events
       let newCount = 0

@@ -30,6 +30,14 @@ interface EventData {
   source_name: string
 }
 
+interface ExistingEvent {
+  id: string
+  title: string
+  event_date: string | null
+  venue: string | null
+  source_name: string | null
+}
+
 // Call Claude API with automatic retry on 429 rate-limit errors.
 // Uses the retry-after header if Anthropic provides it, otherwise backs off by 30 s.
 async function callClaude(
@@ -60,7 +68,6 @@ async function callClaude(
       throw new Error(`Claude API ${res.status}: ${text}`)
     }
 
-    // Read response as text first to avoid memory blow-up on large payloads
     const raw = await res.text()
     return JSON.parse(raw)
   }
@@ -69,7 +76,7 @@ async function callClaude(
 
 // Extract a JSON array from Claude's text output.
 // Handles: raw array, markdown code block, array embedded in prose.
-function extractJson(text: string): EventData[] | null {
+function extractJson(text: string): unknown[] | null {
   const clean = text.trim()
 
   try {
@@ -93,7 +100,6 @@ function extractJson(text: string): EventData[] | null {
     } catch { /* fall through */ }
   }
 
-  // Last resort: find outermost [ ... ] by index
   const start = clean.indexOf('[')
   const end = clean.lastIndexOf(']')
   if (start !== -1 && end > start) {
@@ -104,6 +110,58 @@ function extractJson(text: string): EventData[] | null {
   }
 
   return null
+}
+
+// Call Claude to filter out semantic duplicates from newEvents against existingEvents.
+// Falls back to returning all newEvents unchanged if the call fails.
+async function deduplicateWithClaude(
+  newEvents: EventData[],
+  existingEvents: ExistingEvent[],
+  apiKey: string,
+): Promise<EventData[]> {
+  if (newEvents.length === 0) return []
+  if (existingEvents.length === 0) return newEvents
+
+  try {
+    const claudeData = await callClaude({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      system: `You are a deduplication engine for a Singapore events database. Given a list of NEW events and EXISTING events, identify which new events are semantic duplicates of existing ones.
+
+Two events are duplicates if they refer to the same real-world event, even if:
+- Titles are different or translated
+- Dates differ by 1-2 days
+- One is in English and one in Chinese
+- Descriptions differ but venue + date match
+- One has more detail than the other
+
+Return ONLY a JSON array of new events that are NOT duplicates of existing events.
+Keep the version with more complete information.
+Return the array starting with [ and ending with ]. No markdown, no explanation.`,
+      messages: [{
+        role: 'user',
+        content: `EXISTING EVENTS:\n${JSON.stringify(
+          existingEvents.map((e) => ({ id: e.id, title: e.title, date: e.event_date, venue: e.venue })),
+        )}\n\nNEW EVENTS TO CHECK:\n${JSON.stringify(newEvents)}\n\nReturn only the non-duplicate new events as a JSON array.`,
+      }],
+    }, apiKey)
+
+    const textBlocks = (claudeData.content ?? [])
+      .filter((b: { type: string }) => b.type === 'text')
+      .map((b: { type: string; text: string }) => b.text)
+
+    let filtered: unknown[] | null = null
+    for (let i = textBlocks.length - 1; i >= 0; i--) {
+      filtered = extractJson(textBlocks[i])
+      if (filtered) break
+    }
+    if (!filtered) filtered = extractJson(textBlocks.join('\n'))
+
+    return (filtered as EventData[]) ?? newEvents
+  } catch {
+    // On any error, fall back to inserting all new events
+    return newEvents
+  }
 }
 
 Deno.serve(async (req) => {
@@ -124,9 +182,6 @@ Deno.serve(async (req) => {
     )
   }
 
-  // Optional ?limit= query param — default 5 sources per run to stay under
-  // the 150 s Edge Function timeout. Sources are ordered by last_run_at ASC
-  // (null first) so the least-recently-run ones are always processed first.
   const url = new URL(req.url)
   const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '5', 10), 10)
 
@@ -153,15 +208,22 @@ Deno.serve(async (req) => {
     )
   }
 
-  const results: Array<{ source: string; new_events: number; error?: string }> = []
+  // 2. Fetch existing events once for deduplication across all sources
+  const { data: existingEvents } = await supabase
+    .from('events')
+    .select('id, title, event_date, venue, source_name')
+    .gte('event_date', new Date().toISOString())
+    .order('event_date', { ascending: true })
+
+  const results: Array<{ source: string; new_events: number; skipped_duplicates: number; error?: string }> = []
   let totalNewEvents = 0
 
-  // 2. Process each source
+  // 3. Process each source
   for (const source of sources as DiscoverySource[]) {
     try {
       const today = new Date().toISOString().split('T')[0]
 
-      // Call Claude with web_search tool (retries automatically on 429)
+      // Discover events via Claude web search
       const claudeData = await callClaude({
         model: 'claude-sonnet-4-6',
         max_tokens: 2000,
@@ -198,39 +260,36 @@ Rules:
         }],
       }, claudeApiKey)
 
-      // 3. Parse JSON array from Claude's text blocks.
-      // Web search prepends preamble blocks — the JSON is in the LAST text block.
+      // Parse JSON array from Claude's text blocks (last text block first)
       const textBlocks: string[] = (claudeData.content ?? [])
         .filter((b: { type: string }) => b.type === 'text')
         .map((b: { type: string; text: string }) => b.text)
       if (!textBlocks.length) throw new Error('No text content in Claude response')
 
-      // Try each block independently (last first), then fall back to joined text
-      let events: EventData[] | null = null
+      let discoveredEvents: EventData[] | null = null
       for (let i = textBlocks.length - 1; i >= 0; i--) {
-        events = extractJson(textBlocks[i])
-        if (events) break
+        discoveredEvents = extractJson(textBlocks[i]) as EventData[] | null
+        if (discoveredEvents) break
       }
-      if (!events) events = extractJson(textBlocks.join('\n'))
-      if (!events) throw new Error(
+      if (!discoveredEvents) discoveredEvents = extractJson(textBlocks.join('\n')) as EventData[] | null
+      if (!discoveredEvents) throw new Error(
         `Could not parse JSON array. Last block preview: ${textBlocks[textBlocks.length - 1].slice(0, 400)}`
       )
 
-      // 4. Insert non-duplicate events
+      // Filter to events with required fields
+      const validEvents = discoveredEvents.filter((e) => e.title && e.event_date)
+
+      // AI deduplication: filter out events already in the database
+      const dedupedEvents = await deduplicateWithClaude(
+        validEvents,
+        existingEvents ?? [],
+        claudeApiKey,
+      )
+      const skippedDuplicates = validEvents.length - dedupedEvents.length
+
+      // Insert the non-duplicate events (unique index is the final safety net)
       let newCount = 0
-      for (const event of events) {
-        if (!event.title || !event.event_date) continue
-
-        // Duplicate check: same title (fuzzy) + same date
-        const { data: existing } = await supabase
-          .from('events')
-          .select('id')
-          .ilike('title', `%${event.title}%`)
-          .eq('event_date', event.event_date)
-          .limit(1)
-
-        if (existing && existing.length > 0) continue
-
+      for (const event of dedupedEvents) {
         const { error: insertError } = await supabase.from('events').insert({
           title: event.title,
           description: event.description ?? null,
@@ -251,7 +310,7 @@ Rules:
         if (!insertError) newCount++
       }
 
-      // 5. Update source metadata
+      // Update source metadata
       await supabase
         .from('discovery_sources')
         .update({
@@ -261,20 +320,17 @@ Rules:
         })
         .eq('id', source.id)
 
-      results.push({ source: source.label, new_events: newCount })
+      results.push({ source: source.label, new_events: newCount, skipped_duplicates: skippedDuplicates })
       totalNewEvents += newCount
 
     } catch (err) {
-      // One source failing must not abort the rest
       const msg = err instanceof Error ? err.message : String(err)
-      results.push({ source: source.label, new_events: 0, error: msg })
+      results.push({ source: source.label, new_events: 0, skipped_duplicates: 0, error: msg })
     }
 
-    // Pause between sources to avoid Claude API rate limits
     await new Promise((r) => setTimeout(r, 2000))
   }
 
-  // 6. Return summary
   return new Response(
     JSON.stringify({
       sources_processed: sources.length,

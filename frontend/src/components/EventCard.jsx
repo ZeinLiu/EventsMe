@@ -6,6 +6,30 @@ const CATEGORY_COLORS = {
   'Kids & Family':       'bg-blue-100 text-blue-700',
 }
 
+const CATEGORY_GRADIENTS = {
+  'Kids & Family':       'from-green-400 to-emerald-500',
+  'Arts & Culture':      'from-purple-400 to-violet-500',
+  'Food & Lifestyle':    'from-orange-400 to-amber-500',
+  'Nature & Wildlife':   'from-teal-400 to-cyan-500',
+  'Education & Science': 'from-blue-400 to-indigo-500',
+  'Music & Concerts':    'from-pink-400 to-rose-500',
+  'Sports & Fitness':    'from-red-400 to-orange-500',
+  'Cultural & National': 'from-yellow-400 to-amber-500',
+  'Arts & Performance':  'from-indigo-400 to-purple-500',
+}
+
+const CATEGORY_EMOJI = {
+  'Kids & Family':       '🎪',
+  'Arts & Culture':      '🎨',
+  'Food & Lifestyle':    '🍜',
+  'Nature & Wildlife':   '🌿',
+  'Education & Science': '🔬',
+  'Music & Concerts':    '🎵',
+  'Sports & Fitness':    '🏃',
+  'Cultural & National': '🎆',
+  'Arts & Performance':  '🎭',
+}
+
 function formatDateRange(start, end) {
   if (!start) return ''
   const s = new Date(start)
@@ -53,13 +77,17 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
       }`}
       onClick={onDetail}
     >
-      {event.image_url && (
+      {event.image_url ? (
         <img
           src={event.image_url}
           alt={event.title}
-          className="w-full h-44 object-cover"
+          className="w-full h-[180px] object-cover"
           loading="lazy"
         />
+      ) : (
+        <div className={`w-full h-[180px] bg-gradient-to-br ${CATEGORY_GRADIENTS[event.category] ?? 'from-gray-300 to-gray-400'} flex items-center justify-center`}>
+          <span className="text-5xl">{CATEGORY_EMOJI[event.category] ?? '🎉'}</span>
+        </div>
       )}
 
       <div className="p-4 space-y-2.5">

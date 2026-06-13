@@ -60,6 +60,7 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
           alt={event.title}
           className="w-full h-[180px] object-cover"
           loading="lazy"
+          onError={(e) => { e.currentTarget.style.display = 'none' }}
         />
       )}
 

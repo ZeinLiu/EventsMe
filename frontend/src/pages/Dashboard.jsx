@@ -4,22 +4,24 @@ import { useAuth } from '../context/AuthContext'
 import EventCard from '../components/EventCard'
 import ChatBar from '../components/ChatBar'
 
-const SAMPLE_EVENTS = [
+const SAMPLE_RECS = [
   {
     id: 1,
-    title: 'Sentosa Beach Festival',
-    date: '14 Jun 2026',
-    location: 'Sentosa',
-    tags: ['outdoor', 'family'],
-    short_summary: 'A weekend of beach activities, live music, and food stalls perfect for families with young kids.',
+    title: 'Botanic Gardens Family Picnic',
+    date: '15 Jun 2026',
+    location: 'Tanglin',
+    tags: ['outdoor', 'free'],
+    short_summary: 'Guided nature walk followed by open picnic areas — great for curious toddlers and parents who love green space.',
+    matchScore: 98,
   },
   {
     id: 2,
-    title: 'Science Centre Discovery Day',
-    date: '21 Jun 2026',
-    location: 'Jurong East',
-    tags: ['indoor', 'kids'],
-    short_summary: 'Interactive science exhibits and workshops designed for children aged 5–12.',
+    title: 'KidZania Singapore',
+    date: '20 Jun 2026',
+    location: 'Sentosa',
+    tags: ['indoor', 'play'],
+    short_summary: 'Role-play city where kids can be doctors, pilots, and chefs. Suits Mia and Leo perfectly.',
+    matchScore: 94,
   },
 ]
 
@@ -31,7 +33,6 @@ function getGreeting() {
 }
 
 function getDisplayName(user) {
-  // Google OAuth sets user_metadata.name; email registration sets full_name
   const name = user?.user_metadata?.full_name ?? user?.user_metadata?.name
   if (name) return name.split(' ')[0]
   return user?.email?.split('@')[0] ?? 'there'
@@ -47,7 +48,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="px-4 pt-6 space-y-6">
+    <div className="px-4 pt-6 space-y-6 pb-4">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -67,12 +68,23 @@ export default function Dashboard() {
       <ChatBar />
 
       <section>
-        <h2 className="text-lg font-semibold text-gray-800 mb-3">Recommended for you</h2>
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold text-gray-800">For Your Family</h2>
+          <p className="text-xs text-gray-400 mt-0.5">AI-matched based on your family profile.</p>
+        </div>
         <div className="space-y-3">
-          {SAMPLE_EVENTS.map((event) => (
-            <EventCard key={event.id} event={event} />
+          {SAMPLE_RECS.map((event) => (
+            <div key={event.id} className="relative">
+              <EventCard event={event} />
+              <span className="absolute top-3 right-3 bg-brand-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                {event.matchScore}% match
+              </span>
+            </div>
           ))}
         </div>
+        <p className="text-xs text-center text-gray-400 mt-4">
+          Recommendations refresh when new events are added or your profile changes.
+        </p>
       </section>
     </div>
   )

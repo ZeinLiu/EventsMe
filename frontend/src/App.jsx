@@ -4,7 +4,6 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import Events from './pages/Events'
-import Recommendations from './pages/Recommendations'
 import Chat from './pages/Chat'
 import Calendar from './pages/Calendar'
 import BottomNav from './components/BottomNav'
@@ -72,14 +71,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AppLayout><Events /></AppLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/recommendations"
-        element={
-          <ProtectedRoute>
-            <AppLayout><Recommendations /></AppLayout>
           </ProtectedRoute>
         }
       />

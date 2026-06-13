@@ -1,7 +1,24 @@
 -- ── Admin system: roles, app settings, discovery scheduling, run history ──────
 -- Run in Supabase SQL Editor
 
--- ── 1. Admin helper function (security definer avoids RLS recursion) ──────────
+-- ── 1. User roles table (must exist before is_admin() references it) ──────────
+CREATE TABLE IF NOT EXISTS user_roles (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id    uuid REFERENCES auth.users ON DELETE CASCADE,
+  role       text NOT NULL DEFAULT 'user',
+  created_at timestamp DEFAULT now(),
+  UNIQUE(user_id)
+);
+
+ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
+
+-- Simple self-read policy (no function needed — no recursion risk)
+CREATE POLICY "Users can read own role"
+  ON user_roles FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- ── 2. Admin helper function (security definer avoids RLS recursion) ──────────
+-- Created AFTER user_roles so PostgreSQL can resolve the table reference.
 CREATE OR REPLACE FUNCTION public.is_admin(uid uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -14,21 +31,7 @@ AS $$
   );
 $$;
 
--- ── 2. User roles table ───────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS user_roles (
-  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id    uuid REFERENCES auth.users ON DELETE CASCADE,
-  role       text NOT NULL DEFAULT 'user',
-  created_at timestamp DEFAULT now(),
-  UNIQUE(user_id)
-);
-
-ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can read own role"
-  ON user_roles FOR SELECT
-  USING (auth.uid() = user_id);
-
+-- ── 3. Remaining user_roles policies (use is_admin now that it exists) ────────
 CREATE POLICY "Admins can read all roles"
   ON user_roles FOR SELECT
   USING (is_admin(auth.uid()));
@@ -38,7 +41,7 @@ CREATE POLICY "Admins can manage roles"
   USING (is_admin(auth.uid()))
   WITH CHECK (is_admin(auth.uid()));
 
--- ── 3. App settings table ─────────────────────────────────────────────────────
+-- ── 4. App settings table ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS app_settings (
   key         text PRIMARY KEY,
   value       text NOT NULL,
@@ -58,7 +61,7 @@ CREATE POLICY "Admins can manage settings"
   USING (is_admin(auth.uid()))
   WITH CHECK (is_admin(auth.uid()));
 
--- ── 4. Discovery runs log ─────────────────────────────────────────────────────
+-- ── 5. Discovery runs log ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS discovery_runs (
   id            uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   source_id     uuid REFERENCES discovery_sources ON DELETE SET NULL,
@@ -78,25 +81,25 @@ CREATE POLICY "Admins can read discovery runs"
   ON discovery_runs FOR SELECT
   USING (is_admin(auth.uid()));
 
--- ── 5. Admin policy on discovery_sources ─────────────────────────────────────
+-- ── 6. Admin policy on discovery_sources ─────────────────────────────────────
 -- Service role continues to bypass RLS for backend Edge Functions.
 CREATE POLICY "Admins can manage discovery sources"
   ON discovery_sources FOR ALL
   USING (is_admin(auth.uid()))
   WITH CHECK (is_admin(auth.uid()));
 
--- ── 6. Scheduling + stats columns on discovery_sources ───────────────────────
+-- ── 7. Scheduling + stats columns on discovery_sources ───────────────────────
 ALTER TABLE discovery_sources
-  ADD COLUMN IF NOT EXISTS language            text DEFAULT 'en',
-  ADD COLUMN IF NOT EXISTS refresh_frequency  text DEFAULT 'weekly',
-  ADD COLUMN IF NOT EXISTS refresh_days       text DEFAULT '1',
+  ADD COLUMN IF NOT EXISTS language             text DEFAULT 'en',
+  ADD COLUMN IF NOT EXISTS refresh_frequency   text DEFAULT 'weekly',
+  ADD COLUMN IF NOT EXISTS refresh_days        text DEFAULT '1',
   ADD COLUMN IF NOT EXISTS last_successful_run timestamp,
   ADD COLUMN IF NOT EXISTS next_scheduled_run  timestamp,
   ADD COLUMN IF NOT EXISTS run_count           int DEFAULT 0,
   ADD COLUMN IF NOT EXISTS total_tokens_used   int DEFAULT 0,
   ADD COLUMN IF NOT EXISTS avg_events_per_run  numeric DEFAULT 0;
 
--- ── 7. Seed app_settings defaults ────────────────────────────────────────────
+-- ── 8. Seed app_settings defaults ────────────────────────────────────────────
 INSERT INTO app_settings (key, value, label, description, type, category)
 VALUES
   ('discovery_enabled',    'true',    'Discovery Engine',          'Master on/off switch for all discovery',             'boolean', 'discovery'),
@@ -111,7 +114,7 @@ VALUES
   ('auto_archive_days',    '7',       'Auto-archive after (days)', 'Days after event ends before archiving',             'number',  'general')
 ON CONFLICT (key) DO NOTHING;
 
--- ── 8. Seed refresh schedules on existing sources ────────────────────────────
+-- ── 9. Seed refresh schedules on existing sources ────────────────────────────
 UPDATE discovery_sources SET
   refresh_frequency = 'daily',
   refresh_days      = '0,1,2,3,4,5,6'

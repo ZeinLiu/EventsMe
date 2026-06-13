@@ -184,13 +184,24 @@ Deno.serve(async (req) => {
     )
   }
 
+  // Optional single-source override (from run-scheduler)
+  let body: any = {}
+  try { body = await req.json() } catch { /* no body */ }
+  const requestedSourceId: string | null = body?.source_id ?? null
+
   // Load active RSS sources
-  const { data: sources, error: srcErr } = await supabase
+  let sourcesQuery = supabase
     .from('discovery_sources')
     .select('*')
     .eq('type', 'rss')
     .eq('is_active', true)
     .order('last_run_at', { ascending: true, nullsFirst: true })
+
+  if (requestedSourceId) {
+    sourcesQuery = sourcesQuery.eq('id', requestedSourceId)
+  }
+
+  const { data: sources, error: srcErr } = await sourcesQuery
 
   if (srcErr || !sources?.length) {
     return new Response(JSON.stringify({ sources_processed: 0, total_new_events: 0, results: [] }),
@@ -205,7 +216,7 @@ Deno.serve(async (req) => {
     .order('event_date', { ascending: true })
 
   const today = new Date()
-  const fortyEightHoursAgo = new Date(today.getTime() - 48 * 3600000)
+  const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 3600000)
   const todayStr = today.toISOString().split('T')[0]
 
   const results: Array<{ source: string; new_events: number; tokens_used?: number; error?: string }> = []
@@ -227,7 +238,7 @@ Deno.serve(async (req) => {
       const recentItems = allItems.filter((item) => {
         if (!item.pubDate) return true  // keep if no date
         const d = new Date(item.pubDate)
-        return !isNaN(d.getTime()) && d >= fortyEightHoursAgo
+        return !isNaN(d.getTime()) && d >= sevenDaysAgo
       })
 
       if (recentItems.length === 0) {

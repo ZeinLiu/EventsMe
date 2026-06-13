@@ -71,9 +71,10 @@ Deno.serve(async (req) => {
         .single()
       if (data) sourcesToRun = [data]
     } else {
-      // Scheduled run — pick sources due today
-      const todayDay = new Date().getDay().toString()  // 0=Sun, 1=Mon…
-      const today    = new Date().getDate()
+      // Scheduled run — pick sources due today in SGT (UTC+8)
+      const nowSgt  = new Date(Date.now() + 8 * 3600000)
+      const todayDay = nowSgt.getUTCDay().toString()   // 0=Sun…6=Sat in SGT
+      const todayDate = nowSgt.getUTCDate()
 
       const { data: allSources } = await supabase
         .from('discovery_sources')
@@ -87,7 +88,7 @@ Deno.serve(async (req) => {
           const days = (s.refresh_days ?? '').split(',').map((d: string) => d.trim())
           return days.includes(todayDay)
         }
-        if (s.refresh_frequency === 'monthly') return today === 1
+        if (s.refresh_frequency === 'monthly') return todayDate === 1
         return false
       })
     }
@@ -181,15 +182,18 @@ Deno.serve(async (req) => {
         .eq('key', 'daily_tokens_used')
     }
 
-    // ── 6. Always run dedup cleanup (scheduled runs only) ────────────────────
+    // ── 6. Post-run enrichment (scheduled runs only) ─────────────────────────
     if (!sourceId) {
       await fetch(`${supabaseUrl}/functions/v1/cleanup-duplicates`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${serviceKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
+      }).catch(() => {/* non-fatal */})
+
+      await fetch(`${supabaseUrl}/functions/v1/enrich-images`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ only_upcoming: true }),
       }).catch(() => {/* non-fatal */})
     }
 

@@ -46,18 +46,13 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
 
   return (
     <div
-      className={`bg-white rounded-2xl shadow-sm overflow-hidden cursor-pointer active:opacity-90 transition-opacity relative ${
+      className={`bg-white rounded-2xl shadow-sm overflow-hidden cursor-pointer active:opacity-90 transition-opacity ${
         isRecent
           ? 'border border-gray-100 border-l-[3px] border-l-emerald-300'
           : 'border border-gray-100'
       }`}
       onClick={onDetail}
     >
-      {isNew && (
-        <span className="absolute top-2 right-2 z-10 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide">
-          New
-        </span>
-      )}
       {event.image_url && (
         <img
           src={event.image_url}
@@ -68,12 +63,19 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
       )}
 
       <div className="p-4 space-y-2.5">
-        {/* Category + price */}
+        {/* Category + New badge + price */}
         <div className="flex items-center justify-between gap-2">
           {event.category
-            ? <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${catColor}`}>{event.category}</span>
+            ? <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0 ${catColor}`}>{event.category}</span>
             : <span />}
-          <PriceTag is_free={event.is_free} price_min={event.price_min} price_max={event.price_max} />
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isNew && (
+              <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wide">
+                New
+              </span>
+            )}
+            <PriceTag is_free={event.is_free} price_min={event.price_min} price_max={event.price_max} />
+          </div>
         </div>
 
         {/* Title */}

@@ -209,14 +209,17 @@ export default function Events() {
         />
       )}
 
-      {/* Sort bottom sheet */}
+      {/* Sort bottom sheet — z-[60] sits above bottom nav (z-50) */}
       {sortOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSortOpen(false)} />
-          <div className="relative bg-white rounded-t-2xl px-4 pt-4 pb-10 animate-slide-up">
-            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4" />
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Sort by</h3>
-            <div className="space-y-0.5">
+          <div
+            className="relative bg-white rounded-t-2xl px-4 pt-4 animate-slide-up max-h-[80vh] flex flex-col"
+            style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
+          >
+            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4 shrink-0" />
+            <h3 className="text-base font-semibold text-gray-900 mb-2 shrink-0">Sort by</h3>
+            <div className="space-y-0.5 overflow-y-auto">
               {SORT_OPTIONS.map((opt) => (
                 <button
                   key={opt.key}

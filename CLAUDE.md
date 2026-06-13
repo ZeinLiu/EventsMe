@@ -66,12 +66,20 @@ Search queries include English AND Chinese
 - AI: Claude API (claude-sonnet-4-6)
 - Edge Functions: Deno (Supabase)
 
-## UI — Navigation (5 tabs)
-Home | Events | Chat | Calendar | Profile
+## UI — Navigation
+Bottom nav has 4 tabs:
+- 🏠 Home (`/`) — greeting, ChatBar, AI recommendations
+- 🎪 Events (`/events`) — full event listing + filter drawer
+- 💬 Chat (`/chat`)
+- 👤 Profile (`/profile`)
 
-Note: "For You" recommendations are integrated
-into the Home/Dashboard tab — not a separate tab.
-Recommendations show alongside general content.
+Routes that exist but are NOT in the nav bar:
+- `/calendar` — accessible via "View Calendar" link
+  inside the CalendarBottomSheet only
+- `/admin` — accessible from Profile for admin users
+
+"For You" tab was removed — AI recommendations are
+merged into the Home/Dashboard tab.
 
 ## Events Page
 - Dynamic filter drawer (not hardcoded pills)

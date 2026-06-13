@@ -73,7 +73,7 @@ export default function FilterDrawer({ open, onClose, filters, onApply }) {
       }, {})
       setSources(
         Object.entries(srcCounts)
-          .sort((a, b) => b[1] - a[1])
+          .sort((a, b) => a[0].localeCompare(b[0]))
           .map(([src, count]) => ({ src, count }))
       )
     }

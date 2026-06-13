@@ -109,10 +109,11 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
         {/* Title */}
         <h3 className="text-base font-semibold text-gray-900 leading-snug">{event.title}</h3>
 
-        {/* Date + location */}
+        {/* Date + location + source */}
         <div className="flex flex-col gap-0.5 text-xs text-gray-500">
           {displayDate && <span>📅 {displayDate}</span>}
           {displayLocation && <span>📍 {displayLocation}</span>}
+          {event.source_name && <span className="text-gray-400">via {event.source_name}</span>}
         </div>
 
         {/* Summary */}

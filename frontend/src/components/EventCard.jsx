@@ -91,11 +91,16 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
       )}
 
       <div className="p-4 space-y-2.5">
-        {/* Category + New badge + price */}
+        {/* Category + source + New badge + price */}
         <div className="flex items-center justify-between gap-2">
-          {event.category
-            ? <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0 ${catColor}`}>{event.category}</span>
-            : <span />}
+          <div className="flex items-center gap-1.5 min-w-0">
+            {event.category && (
+              <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0 ${catColor}`}>{event.category}</span>
+            )}
+            {event.source_name && (
+              <span className="text-xs text-gray-400 truncate">{event.source_name}</span>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {isNew && (
               <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wide">
@@ -109,11 +114,10 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
         {/* Title */}
         <h3 className="text-base font-semibold text-gray-900 leading-snug">{event.title}</h3>
 
-        {/* Date + location + source */}
+        {/* Date + location */}
         <div className="flex flex-col gap-0.5 text-xs text-gray-500">
           {displayDate && <span>📅 {displayDate}</span>}
           {displayLocation && <span>📍 {displayLocation}</span>}
-          {event.source_name && <span className="text-gray-400">via {event.source_name}</span>}
         </div>
 
         {/* Summary */}

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { checkBudget, addTokens } from '../_shared/tokenBudget.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,7 +42,7 @@ async function callClaude(
   body: object,
   apiKey: string,
   maxRetries = 3,
-): Promise<{ content: Array<{ type: string; text?: string }> }> {
+): Promise<any> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -132,25 +133,27 @@ async function deduplicateWithClaude(
   newEvents: EventData[],
   existing: ExistingEvent[],
   apiKey: string,
-): Promise<EventData[]> {
-  if (newEvents.length === 0) return []
-  if (existing.length === 0) return newEvents
+  maxTokens: number,
+): Promise<{ events: EventData[]; tokensUsed: number }> {
+  if (newEvents.length === 0) return { events: [], tokensUsed: 0 }
+  if (existing.length === 0) return { events: newEvents, tokensUsed: 0 }
   try {
     const data = await callClaude({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: maxTokens,
       system: `You are a deduplication engine for a Singapore events database. Given NEW events and EXISTING events, return ONLY the new events that are NOT semantic duplicates of existing ones. Two events are duplicates if they are the same real-world event (even with different titles, ±2-day dates, or one event being a subset of another). Return a JSON array. No markdown.`,
       messages: [{
         role: 'user',
         content: `EXISTING:\n${JSON.stringify(existing.map((e) => ({ id: e.id, title: e.title, date: e.event_date, venue: e.venue })))}\n\nNEW:\n${JSON.stringify(newEvents)}\n\nReturn only non-duplicate new events as JSON array.`,
       }],
     }, apiKey)
-    const blocks = (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text as string)
+    const tokensUsed = (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0)
+    const blocks = (data.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text as string)
     let result: unknown[] | null = null
     for (let i = blocks.length - 1; i >= 0; i--) { result = extractJson(blocks[i]); if (result) break }
-    return (result as EventData[]) ?? newEvents
+    return { events: (result as EventData[]) ?? newEvents, tokensUsed }
   } catch {
-    return newEvents
+    return { events: newEvents, tokensUsed: 0 }
   }
 }
 
@@ -165,6 +168,20 @@ Deno.serve(async (req) => {
   if (!claudeApiKey) {
     return new Response(JSON.stringify({ error: 'CLAUDE_API_KEY not configured' }),
       { status: 500, headers: { ...corsHeaders, 'content-type': 'application/json' } })
+  }
+
+  // Read settings and check budget
+  const { data: settingsRows } = await supabase
+    .from('app_settings').select('key, value').eq('key', 'max_tokens_per_call')
+  const maxTokensPerCall = parseInt(
+    (settingsRows ?? []).find((s: any) => s.key === 'max_tokens_per_call')?.value ?? '1000',
+  )
+  const budget = await checkBudget(supabase)
+  if (!budget.allowed) {
+    return new Response(
+      JSON.stringify({ skipped: true, reason: 'daily_token_limit_reached', used: budget.used, limit: budget.limit }),
+      { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
+    )
   }
 
   // Load active RSS sources
@@ -188,11 +205,12 @@ Deno.serve(async (req) => {
     .order('event_date', { ascending: true })
 
   const today = new Date()
-  const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000)
+  const fortyEightHoursAgo = new Date(today.getTime() - 48 * 3600000)
   const todayStr = today.toISOString().split('T')[0]
 
-  const results: Array<{ source: string; new_events: number; error?: string }> = []
+  const results: Array<{ source: string; new_events: number; tokens_used?: number; error?: string }> = []
   let totalNewEvents = 0
+  let totalTokens = 0
 
   for (const source of sources) {
     try {
@@ -209,7 +227,7 @@ Deno.serve(async (req) => {
       const recentItems = allItems.filter((item) => {
         if (!item.pubDate) return true  // keep if no date
         const d = new Date(item.pubDate)
-        return !isNaN(d.getTime()) && d >= thirtyDaysAgo
+        return !isNaN(d.getTime()) && d >= fortyEightHoursAgo
       })
 
       if (recentItems.length === 0) {
@@ -217,16 +235,29 @@ Deno.serve(async (req) => {
         continue
       }
 
+      // Skip items whose URLs are already in the database
+      const itemUrls = recentItems.map((item) => item.link).filter(Boolean)
+      const { data: knownUrlRows } = await supabase
+        .from('events').select('source_url').in('source_url', itemUrls)
+      const knownUrls = new Set((knownUrlRows ?? []).map((e: any) => e.source_url))
+      const newItems = recentItems.filter((item) => !knownUrls.has(item.link))
+
+      if (newItems.length === 0) {
+        results.push({ source: source.label, new_events: 0 })
+        continue
+      }
+
       // Extract events from RSS items in batches of 10
       const allExtracted: EventData[] = []
       const BATCH = 10
+      let sourceTokens = 0
 
-      for (let i = 0; i < recentItems.length; i += BATCH) {
-        const batch = recentItems.slice(i, i + BATCH)
+      for (let i = 0; i < newItems.length; i += BATCH) {
+        const batch = newItems.slice(i, i + BATCH)
         try {
           const claudeData = await callClaude({
             model: 'claude-sonnet-4-6',
-            max_tokens: 2000,
+            max_tokens: maxTokensPerCall,
             system: `You are an event extraction engine for Singapore. Given RSS feed articles, identify which ones are about upcoming events or activities in Singapore. For each event found return structured JSON. Skip opinion pieces, news articles, and reviews of past events.
 
 Return ONLY a JSON array of events with exactly these fields:
@@ -250,7 +281,13 @@ Return [] if no upcoming events found.`,
             }],
           }, claudeApiKey)
 
-          const blocks = (claudeData.content ?? []).filter((b) => b.type === 'text').map((b) => b.text as string)
+          const extractTokens = (claudeData.usage?.input_tokens ?? 0) + (claudeData.usage?.output_tokens ?? 0)
+          if (extractTokens > 0) {
+            sourceTokens += extractTokens
+            await addTokens(supabase, extractTokens)
+          }
+
+          const blocks = (claudeData.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text as string)
           let extracted: unknown[] | null = null
           for (let j = blocks.length - 1; j >= 0; j--) { extracted = extractJson(blocks[j]); if (extracted) break }
           if (extracted) allExtracted.push(...(extracted as EventData[]).filter((e) => e.title && e.event_date))
@@ -268,7 +305,11 @@ Return [] if no upcoming events found.`,
       }
 
       // AI dedup against existing events
-      const dedupedEvents = await deduplicateWithClaude(allExtracted, existingEvents ?? [], claudeApiKey)
+      const { events: dedupedEvents, tokensUsed: dedupTokens } = await deduplicateWithClaude(allExtracted, existingEvents ?? [], claudeApiKey, maxTokensPerCall)
+      if (dedupTokens > 0) {
+        sourceTokens += dedupTokens
+        await addTokens(supabase, dedupTokens)
+      }
 
       // Insert non-duplicates
       let newCount = 0
@@ -298,8 +339,9 @@ Return [] if no upcoming events found.`,
         total_events_found: (source.total_events_found ?? 0) + newCount,
       }).eq('id', source.id)
 
-      results.push({ source: source.label, new_events: newCount })
+      results.push({ source: source.label, new_events: newCount, tokens_used: sourceTokens })
       totalNewEvents += newCount
+      totalTokens += sourceTokens
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -310,7 +352,7 @@ Return [] if no upcoming events found.`,
   }
 
   return new Response(
-    JSON.stringify({ sources_processed: sources.length, total_new_events: totalNewEvents, results }),
+    JSON.stringify({ sources_processed: sources.length, total_new_events: totalNewEvents, tokens_used: totalTokens, results }),
     { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
   )
 })

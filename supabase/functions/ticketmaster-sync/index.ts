@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { checkBudget, addTokens } from '../_shared/tokenBudget.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -114,7 +115,7 @@ async function callClaude(
   body: object,
   apiKey: string,
   maxRetries = 3,
-): Promise<{ content: Array<{ type: string; text?: string }> }> {
+): Promise<any> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -150,8 +151,9 @@ function extractJson(text: string): unknown[] | null {
   return null
 }
 
-async function generateSummaries(events: EventData[], apiKey: string): Promise<Map<number, string>> {
+async function generateSummaries(events: EventData[], apiKey: string, maxTokens: number): Promise<{ summaries: Map<number, string>; tokensUsed: number }> {
   const summaries = new Map<number, string>()
+  let tokensUsed = 0
   const BATCH = 10
   for (let i = 0; i < events.length; i += BATCH) {
     const batch = events.slice(i, i + BATCH).map((e, idx) => ({
@@ -159,11 +161,12 @@ async function generateSummaries(events: EventData[], apiKey: string): Promise<M
     }))
     try {
       const data = await callClaude({
-        model: 'claude-sonnet-4-6', max_tokens: 800,
+        model: 'claude-sonnet-4-6', max_tokens: maxTokens,
         system: `For each event write a short_summary of max 50 words, family-focused, for Singapore families. Return ONLY JSON array: [{"idx":number,"summary":"..."}]. No markdown.`,
         messages: [{ role: 'user', content: JSON.stringify(batch) }],
       }, apiKey)
-      const blocks = (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text as string)
+      tokensUsed += (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0)
+      const blocks = (data.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text as string)
       let result: unknown[] | null = null
       for (let j = blocks.length - 1; j >= 0; j--) { result = extractJson(blocks[j]); if (result) break }
       if (result) {
@@ -174,26 +177,27 @@ async function generateSummaries(events: EventData[], apiKey: string): Promise<M
     } catch { /* non-critical */ }
     await new Promise((r) => setTimeout(r, 1000))
   }
-  return summaries
+  return { summaries, tokensUsed }
 }
 
-async function deduplicateWithClaude(newEvents: EventData[], existing: ExistingEvent[], apiKey: string): Promise<EventData[]> {
-  if (newEvents.length === 0) return []
-  if (existing.length === 0) return newEvents
+async function deduplicateWithClaude(newEvents: EventData[], existing: ExistingEvent[], apiKey: string, maxTokens: number): Promise<{ events: EventData[]; tokensUsed: number }> {
+  if (newEvents.length === 0) return { events: [], tokensUsed: 0 }
+  if (existing.length === 0) return { events: newEvents, tokensUsed: 0 }
   try {
     const data = await callClaude({
-      model: 'claude-sonnet-4-6', max_tokens: 2000,
+      model: 'claude-sonnet-4-6', max_tokens: maxTokens,
       system: `Deduplication engine. Return ONLY new events NOT in the existing list. Duplicates = same real-world event (different titles or ±2 days OK). Return JSON array, no markdown.`,
       messages: [{
         role: 'user',
         content: `EXISTING:\n${JSON.stringify(existing.map((e) => ({ id: e.id, title: e.title, date: e.event_date, venue: e.venue })))}\n\nNEW:\n${JSON.stringify(newEvents)}\n\nReturn non-duplicates as JSON array.`,
       }],
     }, apiKey)
-    const blocks = (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text as string)
+    const tokensUsed = (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0)
+    const blocks = (data.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text as string)
     let result: unknown[] | null = null
     for (let i = blocks.length - 1; i >= 0; i--) { result = extractJson(blocks[i]); if (result) break }
-    return (result as EventData[]) ?? newEvents
-  } catch { return newEvents }
+    return { events: (result as EventData[]) ?? newEvents, tokensUsed }
+  } catch { return { events: newEvents, tokensUsed: 0 } }
 }
 
 Deno.serve(async (req) => {
@@ -212,6 +216,20 @@ Deno.serve(async (req) => {
   if (!claudeApiKey) {
     return new Response(JSON.stringify({ error: 'CLAUDE_API_KEY not configured' }),
       { status: 500, headers: { ...corsHeaders, 'content-type': 'application/json' } })
+  }
+
+  // Read settings and check budget
+  const { data: settingsRows } = await supabase
+    .from('app_settings').select('key, value').eq('key', 'max_tokens_per_call')
+  const maxTokensPerCall = parseInt(
+    (settingsRows ?? []).find((s: any) => s.key === 'max_tokens_per_call')?.value ?? '1000',
+  )
+  const budget = await checkBudget(supabase)
+  if (!budget.allowed) {
+    return new Response(
+      JSON.stringify({ skipped: true, reason: 'daily_token_limit_reached', used: budget.used, limit: budget.limit }),
+      { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
+    )
   }
 
   const today = new Date()
@@ -246,8 +264,9 @@ Deno.serve(async (req) => {
   const mapped = rawEvents.map(mapTmEvent)
 
   // Generate summaries
-  const summaries = await generateSummaries(mapped, claudeApiKey)
+  const { summaries, tokensUsed: summaryTokens } = await generateSummaries(mapped, claudeApiKey, maxTokensPerCall)
   mapped.forEach((e, i) => { if (summaries.has(i)) e.short_summary = summaries.get(i)! })
+  if (summaryTokens > 0) await addTokens(supabase, summaryTokens)
 
   // Fetch existing events for dedup
   const { data: existingEvents } = await supabase
@@ -257,11 +276,13 @@ Deno.serve(async (req) => {
 
   // Deduplicate in batches of 20
   const dedupedEvents: EventData[] = []
+  let dedupTokens = 0
   const DEDUP_BATCH = 20
   for (let i = 0; i < mapped.length; i += DEDUP_BATCH) {
     const batch = mapped.slice(i, i + DEDUP_BATCH)
-    const clean = await deduplicateWithClaude(batch, existingEvents ?? [], claudeApiKey)
+    const { events: clean, tokensUsed } = await deduplicateWithClaude(batch, existingEvents ?? [], claudeApiKey, maxTokensPerCall)
     dedupedEvents.push(...clean)
+    if (tokensUsed > 0) { await addTokens(supabase, tokensUsed); dedupTokens += tokensUsed }
     if (i + DEDUP_BATCH < mapped.length) await new Promise((r) => setTimeout(r, 1500))
   }
 
@@ -279,7 +300,7 @@ Deno.serve(async (req) => {
   }
 
   return new Response(
-    JSON.stringify({ fetched: rawEvents.length, after_dedup: dedupedEvents.length, new_events: newCount }),
+    JSON.stringify({ fetched: rawEvents.length, after_dedup: dedupedEvents.length, new_events: newCount, tokens_used: summaryTokens + dedupTokens }),
     { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
   )
 })

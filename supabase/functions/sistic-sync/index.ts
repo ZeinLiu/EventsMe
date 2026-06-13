@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { checkBudget, addTokens } from '../_shared/tokenBudget.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,7 +34,7 @@ async function callClaude(
   body: object,
   apiKey: string,
   maxRetries = 3,
-): Promise<{ content: Array<{ type: string; text?: string }> }> {
+): Promise<any> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -140,23 +141,24 @@ function scrapeEventCards(html: string, baseUrl: string): Array<{ title: string;
   return cards
 }
 
-async function deduplicateWithClaude(newEvents: EventData[], existing: ExistingEvent[], apiKey: string): Promise<EventData[]> {
-  if (newEvents.length === 0) return []
-  if (existing.length === 0) return newEvents
+async function deduplicateWithClaude(newEvents: EventData[], existing: ExistingEvent[], apiKey: string, maxTokens: number): Promise<{ events: EventData[]; tokensUsed: number }> {
+  if (newEvents.length === 0) return { events: [], tokensUsed: 0 }
+  if (existing.length === 0) return { events: newEvents, tokensUsed: 0 }
   try {
     const data = await callClaude({
-      model: 'claude-sonnet-4-6', max_tokens: 2000,
+      model: 'claude-sonnet-4-6', max_tokens: maxTokens,
       system: `Deduplication engine. Return ONLY new events NOT in existing list. Duplicates = same real-world event. Return JSON array, no markdown.`,
       messages: [{
         role: 'user',
         content: `EXISTING:\n${JSON.stringify(existing.map((e) => ({ id: e.id, title: e.title, date: e.event_date, venue: e.venue })))}\n\nNEW:\n${JSON.stringify(newEvents)}\n\nReturn non-duplicates as JSON array.`,
       }],
     }, apiKey)
-    const blocks = (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text as string)
+    const tokensUsed = (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0)
+    const blocks = (data.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text as string)
     let result: unknown[] | null = null
     for (let i = blocks.length - 1; i >= 0; i--) { result = extractJson(blocks[i]); if (result) break }
-    return (result as EventData[]) ?? newEvents
-  } catch { return newEvents }
+    return { events: (result as EventData[]) ?? newEvents, tokensUsed }
+  } catch { return { events: newEvents, tokensUsed: 0 } }
 }
 
 Deno.serve(async (req) => {
@@ -172,10 +174,25 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, 'content-type': 'application/json' } })
   }
 
+  // Read settings and check budget
+  const { data: settingsRows } = await supabase
+    .from('app_settings').select('key, value').eq('key', 'max_tokens_per_call')
+  const maxTokensPerCall = parseInt(
+    (settingsRows ?? []).find((s: any) => s.key === 'max_tokens_per_call')?.value ?? '1000',
+  )
+  const budget = await checkBudget(supabase)
+  if (!budget.allowed) {
+    return new Response(
+      JSON.stringify({ skipped: true, reason: 'daily_token_limit_reached', used: budget.used, limit: budget.limit }),
+      { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
+    )
+  }
+
   const SISTIC_URL = 'https://www.sistic.com.sg/events'
   const today = new Date().toISOString().split('T')[0]
   let events: EventData[] = []
   let strategy = 'unknown'
+  let totalTokens = 0
 
   // Strategy 1: Fetch and parse SISTIC listing page
   try {
@@ -205,7 +222,7 @@ Deno.serve(async (req) => {
           strategy = 'html-scrape'
           const claudeData = await callClaude({
             model: 'claude-sonnet-4-6',
-            max_tokens: 2000,
+            max_tokens: maxTokensPerCall,
             system: `You are an event extraction engine for Singapore. Given SISTIC event listings, return structured event data as a JSON array. Return ONLY events happening in the future (today: ${today}).
 
 Each object must have: title, description (null if unknown), short_summary (max 50 words), category (one of: Kids & Family, Arts & Culture, Food & Lifestyle, Nature & Wildlife, Music & Concerts, Sports & Fitness, Cultural & National, Arts & Performance), event_date (YYYY-MM-DD or null), event_end_date (YYYY-MM-DD or null), venue (null if unknown), price_min (0), price_max (0), is_free (false), source_url, booking_url, image_url (null), source_name ("SISTIC").
@@ -213,7 +230,10 @@ Return [] if no future events. No markdown.`,
             messages: [{ role: 'user', content: JSON.stringify(cards) }],
           }, claudeApiKey)
 
-          const blocks = (claudeData.content ?? []).filter((b) => b.type === 'text').map((b) => b.text as string)
+          const scrapeTokens = (claudeData.usage?.input_tokens ?? 0) + (claudeData.usage?.output_tokens ?? 0)
+          if (scrapeTokens > 0) { totalTokens += scrapeTokens; await addTokens(supabase, scrapeTokens) }
+
+          const blocks = (claudeData.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text as string)
           let result: unknown[] | null = null
           for (let i = blocks.length - 1; i >= 0; i--) { result = extractJson(blocks[i]); if (result) break }
           if (result) events = (result as EventData[]).filter((e) => e.title)
@@ -230,13 +250,16 @@ Return [] if no future events. No markdown.`,
     try {
       const claudeData = await callClaude({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
+        max_tokens: maxTokensPerCall * 2,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         system: `You are an event discovery engine. Search for upcoming events on SISTIC Singapore (sistic.com.sg). Return ONLY a JSON array of events with fields: title, description, short_summary, category, event_date (YYYY-MM-DD), event_end_date, venue, price_min, price_max, is_free, source_url, booking_url, image_url, source_name ("SISTIC"). Today: ${today}. Only future events. No markdown.`,
         messages: [{ role: 'user', content: `Search for: site:sistic.com.sg upcoming events Singapore ${new Date().getFullYear()}\nReturn upcoming SISTIC events as JSON array.` }],
       }, claudeApiKey)
 
-      const blocks = (claudeData.content ?? []).filter((b) => b.type === 'text').map((b) => b.text as string)
+      const fallbackTokens = (claudeData.usage?.input_tokens ?? 0) + (claudeData.usage?.output_tokens ?? 0)
+      if (fallbackTokens > 0) { totalTokens += fallbackTokens; await addTokens(supabase, fallbackTokens) }
+
+      const blocks = (claudeData.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text as string)
       let result: unknown[] | null = null
       for (let i = blocks.length - 1; i >= 0; i--) { result = extractJson(blocks[i]); if (result) break }
       if (result) events = (result as EventData[]).filter((e) => e.title && e.event_date)
@@ -257,7 +280,8 @@ Return [] if no future events. No markdown.`,
     .gte('event_date', new Date().toISOString())
     .order('event_date', { ascending: true })
 
-  const dedupedEvents = await deduplicateWithClaude(events, existingEvents ?? [], claudeApiKey)
+  const { events: dedupedEvents, tokensUsed: dedupTokens } = await deduplicateWithClaude(events, existingEvents ?? [], claudeApiKey, maxTokensPerCall)
+  if (dedupTokens > 0) { totalTokens += dedupTokens; await addTokens(supabase, dedupTokens) }
 
   // Insert
   let newCount = 0
@@ -278,7 +302,7 @@ Return [] if no future events. No markdown.`,
     .eq('value', SISTIC_URL)
 
   return new Response(
-    JSON.stringify({ strategy, found: events.length, after_dedup: dedupedEvents.length, new_events: newCount }),
+    JSON.stringify({ strategy, found: events.length, after_dedup: dedupedEvents.length, new_events: newCount, tokens_used: totalTokens }),
     { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
   )
 })

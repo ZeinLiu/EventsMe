@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { checkBudget, addTokens } from '../_shared/tokenBudget.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -145,10 +146,44 @@ Deno.serve(async (req) => {
     )
   }
 
-  // 1. Fetch all events
+  // Read max_tokens_per_call from settings
+  const { data: settingsRows } = await supabase
+    .from('app_settings')
+    .select('key, value')
+    .eq('key', 'max_tokens_per_call')
+  const maxTokensPerCall = parseInt(
+    (settingsRows ?? []).find((s: any) => s.key === 'max_tokens_per_call')?.value ?? '1000',
+  )
+
+  // Budget guard
+  const budget = await checkBudget(supabase)
+  if (!budget.allowed) {
+    return new Response(
+      JSON.stringify({ skipped: true, reason: 'daily_token_limit_reached', used: budget.used, limit: budget.limit }),
+      { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
+    )
+  }
+
+  // 1a. Early-exit: skip if no events have been added/unchecked in the last 24 hours
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { count: newCount } = await supabase
+    .from('events')
+    .select('id', { count: 'exact', head: true })
+    .or(`dedup_checked_at.is.null,dedup_checked_at.lt.${yesterday}`)
+    .gte('event_date', new Date().toISOString())
+
+  if (!newCount || newCount === 0) {
+    return new Response(
+      JSON.stringify({ batches_processed: 0, duplicates_deleted: 0, deleted_ids: [], message: 'No unchecked events — skipped' }),
+      { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
+    )
+  }
+
+  // 1b. Fetch all upcoming events for full dedup
   const { data: allEvents, error: fetchError } = await supabase
     .from('events')
     .select('id, title, description, event_date, event_end_date, venue, source_name, is_free')
+    .gte('event_date', new Date().toISOString())
     .order('event_date', { ascending: true })
 
   if (fetchError) {
@@ -179,6 +214,7 @@ Deno.serve(async (req) => {
   const allDeletedIds: string[] = []
   const alreadyDeleted = new Set<string>()
   let batchesProcessed = 0
+  let totalTokens = 0
   const errors: string[] = []
 
   // 3. Send each batch to Claude and collect duplicate groups
@@ -188,9 +224,9 @@ Deno.serve(async (req) => {
     if (liveBatch.length < 2) continue
 
     try {
-      const claudeData = await callClaude({
+      const claudeData: any = await callClaude({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
+        max_tokens: maxTokensPerCall,
         system: `You are a deduplication engine for a Singapore events database.
 These events may be duplicates of each other. Identify which ones refer to the same real-world event.
 
@@ -254,6 +290,11 @@ No markdown, no explanation, no code blocks. Start with [ and end with ].`,
         }
       }
 
+      const callTokens = (claudeData.usage?.input_tokens ?? 0) + (claudeData.usage?.output_tokens ?? 0)
+      if (callTokens > 0) {
+        await addTokens(supabase, callTokens)
+        totalTokens += callTokens
+      }
       batchesProcessed++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -264,6 +305,17 @@ No markdown, no explanation, no code blocks. Start with [ and end with ].`,
     await new Promise((r) => setTimeout(r, 1500))
   }
 
+  // Mark all surviving events as dedup-checked so the early-exit can skip them next time
+  const survivingIds = (allEvents as EventRow[]).map((e) => e.id).filter((id) => !alreadyDeleted.has(id))
+  if (survivingIds.length > 0) {
+    const now = new Date().toISOString()
+    for (let i = 0; i < survivingIds.length; i += 100) {
+      await supabase.from('events')
+        .update({ dedup_checked_at: now })
+        .in('id', survivingIds.slice(i, i + 100))
+    }
+  }
+
   // 5. Return summary
   return new Response(
     JSON.stringify({
@@ -271,6 +323,7 @@ No markdown, no explanation, no code blocks. Start with [ and end with ].`,
       total_candidate_batches: batches.length,
       duplicates_deleted: allDeletedIds.length,
       deleted_ids: allDeletedIds,
+      tokens_used: totalTokens,
       ...(errors.length > 0 ? { errors } : {}),
     }),
     { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },

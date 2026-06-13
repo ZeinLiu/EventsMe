@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { checkBudget, addTokens } from '../_shared/tokenBudget.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,7 +10,6 @@ interface DiscoverySource {
   id: string
   label: string
   value: string
-  last_run_count: number
   total_events_found: number
 }
 
@@ -38,13 +38,11 @@ interface ExistingEvent {
   source_name: string | null
 }
 
-// Call Claude API with automatic retry on 429 rate-limit errors.
-// Uses the retry-after header if Anthropic provides it, otherwise backs off by 30 s.
 async function callClaude(
   body: object,
   apiKey: string,
   maxRetries = 3,
-): Promise<{ content: Array<{ type: string; text?: string }> }> {
+): Promise<any> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -68,56 +66,36 @@ async function callClaude(
       throw new Error(`Claude API ${res.status}: ${text}`)
     }
 
-    const raw = await res.text()
-    return JSON.parse(raw)
+    return JSON.parse(await res.text())
   }
   throw new Error('Claude API: max retries exceeded')
 }
 
-// Extract a JSON array from Claude's text output.
-// Handles: raw array, markdown code block, array embedded in prose.
 function extractJson(text: string): unknown[] | null {
   const clean = text.trim()
 
-  try {
-    const parsed = JSON.parse(clean)
-    if (Array.isArray(parsed)) return parsed
-  } catch { /* fall through */ }
+  try { const p = JSON.parse(clean); if (Array.isArray(p)) return p } catch { /* fall through */ }
 
   const codeBlock = clean.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (codeBlock) {
-    try {
-      const parsed = JSON.parse(codeBlock[1].trim())
-      if (Array.isArray(parsed)) return parsed
-    } catch { /* fall through */ }
-  }
+  if (codeBlock) { try { const p = JSON.parse(codeBlock[1].trim()); if (Array.isArray(p)) return p } catch { /* fall through */ } }
 
   const arrayMatch = clean.match(/\[[\s\S]*\]/)
-  if (arrayMatch) {
-    try {
-      const parsed = JSON.parse(arrayMatch[0])
-      if (Array.isArray(parsed)) return parsed
-    } catch { /* fall through */ }
-  }
+  if (arrayMatch) { try { const p = JSON.parse(arrayMatch[0]); if (Array.isArray(p)) return p } catch { /* fall through */ } }
 
   const start = clean.indexOf('[')
   const end = clean.lastIndexOf(']')
   if (start !== -1 && end > start) {
-    try {
-      const parsed = JSON.parse(clean.slice(start, end + 1))
-      if (Array.isArray(parsed)) return parsed
-    } catch { /* fall through */ }
+    try { const p = JSON.parse(clean.slice(start, end + 1)); if (Array.isArray(p)) return p } catch { /* fall through */ }
   }
 
   return null
 }
 
-// Call Claude to filter out semantic duplicates from newEvents against existingEvents.
-// Falls back to returning all newEvents unchanged if the call fails.
 async function deduplicateWithClaude(
   newEvents: EventData[],
   existingEvents: ExistingEvent[],
   apiKey: string,
+  maxTokens: number,
 ): Promise<EventData[]> {
   if (newEvents.length === 0) return []
   if (existingEvents.length === 0) return newEvents
@@ -125,30 +103,23 @@ async function deduplicateWithClaude(
   try {
     const claudeData = await callClaude({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
-      system: `You are a deduplication engine for a Singapore events database. Given a list of NEW events and EXISTING events, identify which new events are semantic duplicates of existing ones.
+      max_tokens: maxTokens,
+      system: `You are a deduplication engine for a Singapore events database. Given NEW events and EXISTING events, return ONLY the new events that are NOT semantic duplicates of existing ones.
 
-Two events are duplicates if they refer to the same real-world event, even if:
-- Titles are different or translated
-- Dates differ by 1-2 days
-- One is in English and one in Chinese
-- Descriptions differ but venue + date match
-- One has more detail than the other
+Two events are duplicates if they refer to the same real-world event, even if titles differ, dates differ by 1-2 days, or one is in English and one in Chinese.
 
-Return ONLY a JSON array of new events that are NOT duplicates of existing events.
-Keep the version with more complete information.
-Return the array starting with [ and ending with ]. No markdown, no explanation.`,
+Return ONLY a JSON array starting with [ and ending with ]. No markdown, no explanation.`,
       messages: [{
         role: 'user',
         content: `EXISTING EVENTS:\n${JSON.stringify(
           existingEvents.map((e) => ({ id: e.id, title: e.title, date: e.event_date, venue: e.venue })),
-        )}\n\nNEW EVENTS TO CHECK:\n${JSON.stringify(newEvents)}\n\nReturn only the non-duplicate new events as a JSON array.`,
+        )}\n\nNEW EVENTS:\n${JSON.stringify(newEvents)}\n\nReturn only the non-duplicate new events as a JSON array.`,
       }],
     }, apiKey)
 
-    const textBlocks = (claudeData.content ?? [])
-      .filter((b: { type: string }) => b.type === 'text')
-      .map((b: { type: string; text: string }) => b.text)
+    const textBlocks: string[] = (claudeData.content ?? [])
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text)
 
     let filtered: unknown[] | null = null
     for (let i = textBlocks.length - 1; i >= 0; i--) {
@@ -159,7 +130,6 @@ Return the array starting with [ and ending with ]. No markdown, no explanation.
 
     return (filtered as EventData[]) ?? newEvents
   } catch {
-    // On any error, fall back to inserting all new events
     return newEvents
   }
 }
@@ -182,17 +152,35 @@ Deno.serve(async (req) => {
     )
   }
 
-  const url = new URL(req.url)
-  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '5', 10), 10)
+  // 1. Read settings dynamically
+  const { data: settingsRows } = await supabase
+    .from('app_settings')
+    .select('key, value')
+    .in('key', ['max_events_per_run', 'max_tokens_per_call', 'event_window_days'])
 
-  // 1. Read active AI search sources
+  const cfg: Record<string, string> = {}
+  for (const s of settingsRows ?? []) cfg[s.key] = s.value
+
+  const maxEventsPerRun  = parseInt(cfg['max_events_per_run']  ?? '10')
+  const maxTokensPerCall = parseInt(cfg['max_tokens_per_call'] ?? '1000')
+  const eventWindowDays  = parseInt(cfg['event_window_days']   ?? '90')
+
+  // 2. Budget guard — skip if daily limit reached (auto-resets if 24h passed)
+  const budget = await checkBudget(supabase)
+  if (!budget.allowed) {
+    return new Response(
+      JSON.stringify({ skipped: true, reason: 'daily_token_limit_reached', used: budget.used, limit: budget.limit }),
+      { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
+    )
+  }
+
+  // 3. Read active AI search sources
   const { data: sources, error: sourcesError } = await supabase
     .from('discovery_sources')
     .select('*')
     .eq('type', 'ai_search')
     .eq('is_active', true)
     .order('last_run_at', { ascending: true, nullsFirst: true })
-    .limit(limit)
 
   if (sourcesError) {
     return new Response(
@@ -208,62 +196,68 @@ Deno.serve(async (req) => {
     )
   }
 
-  // 2. Fetch existing events once for deduplication across all sources
+  // 4. Fetch existing events within the event window for deduplication
+  const windowEnd = new Date(Date.now() + eventWindowDays * 86_400_000).toISOString()
   const { data: existingEvents } = await supabase
     .from('events')
     .select('id, title, event_date, venue, source_name')
     .gte('event_date', new Date().toISOString())
+    .lte('event_date', windowEnd)
     .order('event_date', { ascending: true })
 
-  const results: Array<{ source: string; new_events: number; skipped_duplicates: number; error?: string }> = []
+  const results: Array<{ source: string; new_events: number; skipped_duplicates: number; tokens_used?: number; error?: string }> = []
   let totalNewEvents = 0
+  let totalTokens = 0
 
-  // 3. Process each source
+  // 5. Process each source
   for (const source of sources as DiscoverySource[]) {
     try {
       const today = new Date().toISOString().split('T')[0]
 
-      // Discover events via Claude web search
       const claudeData = await callClaude({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
+        max_tokens: maxTokensPerCall * 2,  // discovery needs more headroom than dedup
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        system: `You are an event discovery engine for Singapore. Search the web for events matching the query. Extract ALL events found and return ONLY a raw JSON array — no markdown, no code blocks, no backticks, no explanation. Start your response with [ and end with ].
+        system: `You are a Singapore events discovery engine. Search the web for upcoming events matching the query. Today: ${today}. Only include events within the next ${eventWindowDays} days.
+
+Return ONLY a JSON array — no markdown, no code blocks. Start with [ and end with ].
 
 Each event object must have exactly these fields:
 {
   "title": "event name",
-  "description": "2-3 sentence description, max 60 words",
-  "short_summary": "max 50 words, family focused",
-  "category": "one of: Kids & Family, Arts & Culture, Food & Lifestyle, Nature & Wildlife, Education & Science, Music & Concerts, Sports & Fitness, Cultural & National, Arts & Performance",
+  "description": "max 60 words",
+  "short_summary": "max 30 words, family-focused",
+  "category": "one of: Kids & Family | Arts & Culture | Food & Lifestyle | Nature & Wildlife | Education & Science | Music & Concerts | Sports & Fitness | Cultural & National | Arts & Performance",
   "event_date": "YYYY-MM-DD or null",
   "event_end_date": "YYYY-MM-DD or null",
   "venue": "venue name and area",
   "price_min": 0,
   "price_max": 0,
   "is_free": true,
-  "source_url": "url where event was found",
-  "booking_url": "booking or more info url",
-  "image_url": "image url or null",
+  "source_url": "url",
+  "booking_url": "url",
+  "image_url": "url or null",
   "source_name": "website name"
 }
 
-Rules:
-- Only include real upcoming events with confirmed dates.
-- Skip past events.
-- Skip events outside Singapore.
-- Return minimum 3, maximum 5 events.
-- Your entire response must be valid JSON. No text before [ or after ].`,
+Rules: skip past events, skip non-Singapore events, skip events without dates. Return max ${maxEventsPerRun} events. Return ONLY the JSON array.`,
         messages: [{
           role: 'user',
-          content: `Search for: ${source.value}\nToday's date: ${today}\nReturn only upcoming Singapore events as JSON array.`,
+          content: `Search for: ${source.value}\nReturn only upcoming Singapore events as JSON array.`,
         }],
       }, claudeApiKey)
 
-      // Parse JSON array from Claude's text blocks (last text block first)
+      // Track tokens
+      const callTokens = (claudeData.usage?.input_tokens ?? 0) + (claudeData.usage?.output_tokens ?? 0)
+      console.log(`[${source.label}] discovery tokens: ${callTokens}`)
+      if (callTokens > 0) {
+        await addTokens(supabase, callTokens)
+        totalTokens += callTokens
+      }
+
       const textBlocks: string[] = (claudeData.content ?? [])
-        .filter((b: { type: string }) => b.type === 'text')
-        .map((b: { type: string; text: string }) => b.text)
+        .filter((b: any) => b.type === 'text')
+        .map((b: any) => b.text)
       if (!textBlocks.length) throw new Error('No text content in Claude response')
 
       let discoveredEvents: EventData[] | null = null
@@ -273,21 +267,19 @@ Rules:
       }
       if (!discoveredEvents) discoveredEvents = extractJson(textBlocks.join('\n')) as EventData[] | null
       if (!discoveredEvents) throw new Error(
-        `Could not parse JSON array. Last block preview: ${textBlocks[textBlocks.length - 1].slice(0, 400)}`
+        `Could not parse JSON. Last block: ${textBlocks[textBlocks.length - 1]?.slice(0, 300)}`,
       )
 
-      // Filter to events with required fields
       const validEvents = discoveredEvents.filter((e) => e.title && e.event_date)
 
-      // AI deduplication: filter out events already in the database
       const dedupedEvents = await deduplicateWithClaude(
         validEvents,
         existingEvents ?? [],
         claudeApiKey,
+        maxTokensPerCall,
       )
       const skippedDuplicates = validEvents.length - dedupedEvents.length
 
-      // Insert the non-duplicate events (unique index is the final safety net)
       let newCount = 0
       for (const event of dedupedEvents) {
         const { error: insertError } = await supabase.from('events').insert({
@@ -306,11 +298,9 @@ Rules:
           image_url: event.image_url ?? null,
           source_name: event.source_name ?? source.label,
         })
-
         if (!insertError) newCount++
       }
 
-      // Update source metadata
       await supabase
         .from('discovery_sources')
         .update({
@@ -320,7 +310,7 @@ Rules:
         })
         .eq('id', source.id)
 
-      results.push({ source: source.label, new_events: newCount, skipped_duplicates: skippedDuplicates })
+      results.push({ source: source.label, new_events: newCount, skipped_duplicates: skippedDuplicates, tokens_used: callTokens })
       totalNewEvents += newCount
 
     } catch (err) {
@@ -335,6 +325,7 @@ Rules:
     JSON.stringify({
       sources_processed: sources.length,
       total_new_events: totalNewEvents,
+      tokens_used: totalTokens,
       results,
     }),
     { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },

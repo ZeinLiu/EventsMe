@@ -8,103 +8,42 @@ on:
 jobs:
   discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
 
     steps:
-      - name: Step 1 — Claude Discovery (AI web search)
-        continue-on-error: true
+      - name: Run Discovery Scheduler
         run: |
-          echo "=== Claude Discovery ==="
-          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/claude-discovery" \
+          echo "=== Run Scheduler ==="
+          curl -s -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/run-scheduler" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{}' \
-            --max-time 120 \
-            | tee /tmp/claude_discovery.json
+            -d '{"scheduled": true}' \
+            --max-time 900 \
+            | tee /tmp/scheduler.json
           echo ""
-          echo "Status: $?"
-
-      - name: Wait 30 s
-        run: sleep 30
-
-      - name: Step 2 — RSS Discovery
-        continue-on-error: true
-        run: |
-          echo "=== RSS Discovery ==="
-          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/rss-discovery" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{}' \
-            --max-time 180 \
-            | tee /tmp/rss_discovery.json
-          echo ""
-
-      - name: Wait 30 s
-        run: sleep 30
-
-      - name: Step 3 — Eventbrite Sync
-        continue-on-error: true
-        run: |
-          echo "=== Eventbrite Sync ==="
-          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/eventbrite-sync" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{}' \
-            --max-time 120 \
-            | tee /tmp/eventbrite.json
-          echo ""
-
-      - name: Wait 30 s
-        run: sleep 30
-
-      - name: Step 4 — Ticketmaster Sync
-        continue-on-error: true
-        run: |
-          echo "=== Ticketmaster Sync ==="
-          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/ticketmaster-sync" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{}' \
-            --max-time 120 \
-            | tee /tmp/ticketmaster.json
-          echo ""
-
-      - name: Wait 30 s
-        run: sleep 30
-
-      - name: Step 5 — SISTIC Sync
-        continue-on-error: true
-        run: |
-          echo "=== SISTIC Sync ==="
-          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/sistic-sync" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{}' \
-            --max-time 120 \
-            | tee /tmp/sistic.json
-          echo ""
-
-      - name: Wait 30 s
-        run: sleep 30
-
-      - name: Step 6 — Cleanup Duplicates (always runs)
-        if: always()
-        run: |
-          echo "=== Cleanup Duplicates ==="
-          curl -s -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/cleanup-duplicates" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{}' \
-            --max-time 300 \
-            | tee /tmp/cleanup.json
-          echo ""
+          echo "Exit: $?"
 
       - name: Print summary
         if: always()
         run: |
-          echo "===== DISCOVERY SUMMARY ====="
-          for f in claude_discovery rss_discovery eventbrite ticketmaster sistic cleanup; do
-            echo "--- $f ---"
-            cat /tmp/${f}.json 2>/dev/null || echo "(no output)"
-            echo ""
-          done
+          echo "===== SCHEDULER SUMMARY ====="
+          python3 -c "
+          import sys, json
+          try:
+            with open('/tmp/scheduler.json') as f:
+              d = json.load(f)
+            print(f'Ran: {d.get(\"ran\", 0)} sources')
+            print(f'Tokens delta: {d.get(\"tokensDelta\", 0):,}')
+            for r in d.get('results', []):
+              status = r.get('status', '?')
+              name   = r.get('source', '?')
+              events = r.get('events', 0)
+              tokens = r.get('tokens', 0)
+              ms     = r.get('durationMs', 0)
+              print(f'  [{status.upper():7s}] {name} — {events} events, {tokens:,} tokens ({ms}ms)')
+            if d.get('skipped'):
+              print(f'Skipped: {d.get(\"reason\")}')
+          except Exception as e:
+            print('Could not parse output:', e)
+          " || cat /tmp/scheduler.json

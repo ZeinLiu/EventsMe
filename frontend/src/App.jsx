@@ -8,6 +8,10 @@ import Recommendations from './pages/Recommendations'
 import Chat from './pages/Chat'
 import Calendar from './pages/Calendar'
 import BottomNav from './components/BottomNav'
+import AdminLayout from './pages/admin/AdminLayout'
+import AdminSettings from './pages/admin/AdminSettings'
+import AdminDiscovery from './pages/admin/AdminDiscovery'
+import AdminUsage from './pages/admin/AdminUsage'
 
 function LoadingScreen() {
   return (
@@ -103,6 +107,21 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* Admin — uses its own layout (no BottomNav, wider, desktop-friendly) */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="/admin/settings" replace />} />
+        <Route path="settings"  element={<AdminSettings />} />
+        <Route path="discovery" element={<AdminDiscovery />} />
+        <Route path="usage"     element={<AdminUsage />} />
+      </Route>
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import FamilyMemberCard from '../components/FamilyMemberCard'
 import FamilyWizardModal from '../components/FamilyWizardModal'
+import { useAdminRole } from './admin/AdminLayout'
 
 const DAYS = ['Weekdays', 'Saturday', 'Sunday', 'Public Holidays']
 const ROLE_OPTIONS = ['Parent', 'Child', 'Grandparent', 'Guardian', 'Other']
@@ -190,6 +192,8 @@ export default function Profile() {
     if (!error) setTimeout(() => setPrefsMsg(''), 3000)
   }
 
+  const { isAdmin } = useAdminRole()
+
   const displayName = user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? user?.email?.split('@')[0] ?? 'My Account'
   const initials = displayName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
 
@@ -339,6 +343,25 @@ export default function Profile() {
           </button>
         </div>
       </section>
+
+      {/* ── Admin link (only visible to admins) ── */}
+      {isAdmin && (
+        <section>
+          <Link
+            to="/admin"
+            className="flex items-center justify-between w-full bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3.5 hover:bg-amber-100 transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-lg">⚙️</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Admin Control Centre</p>
+                <p className="text-xs text-amber-600">Settings, discovery sources, usage</p>
+              </div>
+            </div>
+            <span className="text-amber-500 text-sm">→</span>
+          </Link>
+        </section>
+      )}
 
       {/* ── Modals ── */}
       <FamilyWizardModal

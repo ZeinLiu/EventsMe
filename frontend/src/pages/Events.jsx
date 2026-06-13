@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { buildEventsQuery, matchesAudience, DEFAULT_FILTERS } from '../lib/eventFilters'
 import EventCard from '../components/EventCard'
 import EventDetailSheet from '../components/EventDetailSheet'
 import CalendarBottomSheet from '../components/CalendarBottomSheet'
+import FilterDrawer from '../components/FilterDrawer'
 import Toast from '../components/Toast'
 
 const SORT_OPTIONS = [
@@ -22,7 +24,6 @@ const SORT_FNS = {
   'price-desc':      (a, b) => (b.price_max ?? 0) - (a.price_max ?? 0),
 }
 
-// Null event_date always sorts to the bottom regardless of direction
 function sortWithNullsLast(fn) {
   return (a, b) => {
     if (a.event_date && !b.event_date) return -1
@@ -31,26 +32,82 @@ function sortWithNullsLast(fn) {
   }
 }
 
-const TABS = [
-  { label: 'All',           filter: () => true },
-  { label: 'Free',          filter: (e) => e.is_free },
-  { label: 'This Month',    filter: (e) => {
-    const now = new Date()
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-    const start = new Date(e.event_date)
-    const end = new Date(e.event_end_date)
-    return start <= monthEnd && end >= now
-  }},
-  { label: 'Kids & Family', filter: (e) => e.category === 'Kids & Family' },
-  { label: 'Arts',          filter: (e) => e.category === 'Arts & Culture' },
-]
+function buildActivePills(filters, setFilters) {
+  const pills = []
+
+  filters.categories.forEach(cat =>
+    pills.push({
+      label: cat,
+      onRemove: () => setFilters(f => ({ ...f, categories: f.categories.filter(c => c !== cat) })),
+    })
+  )
+
+  if (filters.sources.length === 1)
+    pills.push({
+      label: filters.sources[0],
+      onRemove: () => setFilters(f => ({ ...f, sources: [] })),
+    })
+  else if (filters.sources.length > 1)
+    pills.push({
+      label: `${filters.sources.length} Sources`,
+      onRemove: () => setFilters(f => ({ ...f, sources: [] })),
+    })
+
+  const priceLabels = {
+    free:    'Free only',
+    under20: 'Under $20',
+    under50: 'Under $50',
+    above50: '$50 and above',
+    custom:  `$${filters.priceMin}–$${filters.priceMax}`,
+  }
+  if (filters.price !== 'any')
+    pills.push({
+      label: priceLabels[filters.price],
+      onRemove: () => setFilters(f => ({ ...f, price: 'any' })),
+    })
+
+  const dateLabels = {
+    weekend: 'This Weekend',
+    week:    'This Week',
+    month:   'This Month',
+    custom:  `${filters.dateFrom} – ${filters.dateTo}`,
+  }
+  if (filters.date !== 'any')
+    pills.push({
+      label: dateLabels[filters.date],
+      onRemove: () => setFilters(f => ({ ...f, date: 'any' })),
+    })
+
+  filters.audience.forEach(a => {
+    const labels = {
+      toddlers:   'Toddlers 0-3',
+      young_kids: 'Young Kids 4-6',
+      kids:       'Kids 7-12',
+      teens:      'Teens 13-17',
+      adults:     'Adults',
+    }
+    pills.push({
+      label: labels[a],
+      onRemove: () => setFilters(f => ({ ...f, audience: f.audience.filter(x => x !== a) })),
+    })
+  })
+
+  if (filters.admission !== 'both')
+    pills.push({
+      label: filters.admission === 'free' ? 'Free only' : 'Paid only',
+      onRemove: () => setFilters(f => ({ ...f, admission: 'both' })),
+    })
+
+  return pills
+}
 
 export default function Events() {
   const { user } = useAuth()
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState('All')
+  const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [filterOpen, setFilterOpen] = useState(false)
 
   const [savedIds, setSavedIds] = useState(new Set())
   const [calendarIds, setCalendarIds] = useState(new Set())
@@ -67,41 +124,38 @@ export default function Events() {
     setTimeout(() => setToast(null), 2500)
   }
 
+  // Fetch events when filters change
   useEffect(() => {
-    async function load() {
-      setLoading(true)
-      setError('')
-
-      const [eventsRes, savedRes, calRes] = await Promise.all([
-        supabase.from('events').select('*').eq('is_archived', false).order('created_at', { ascending: false }),
-        user
-          ? supabase.from('saved_events').select('event_id').eq('user_id', user.id)
-          : Promise.resolve({ data: [] }),
-        user
-          ? supabase.from('calendar_entries').select('event_id').eq('user_id', user.id)
-          : Promise.resolve({ data: [] }),
-      ])
-
-      if (eventsRes.error) setError(eventsRes.error.message)
-      else setEvents(eventsRes.data ?? [])
-
-      setSavedIds(new Set((savedRes.data ?? []).map((r) => r.event_id)))
-      setCalendarIds(new Set((calRes.data ?? []).map((r) => r.event_id)))
+    setLoading(true)
+    setError('')
+    buildEventsQuery(filters).then(({ data, error: err }) => {
+      if (err) setError(err.message)
+      else setEvents(data ?? [])
       setLoading(false)
-    }
-    load()
+    })
+  }, [filters])
+
+  // Fetch saved and calendar IDs when user changes
+  useEffect(() => {
+    if (!user) { setSavedIds(new Set()); setCalendarIds(new Set()); return }
+    Promise.all([
+      supabase.from('saved_events').select('event_id').eq('user_id', user.id),
+      supabase.from('calendar_entries').select('event_id').eq('user_id', user.id),
+    ]).then(([savedRes, calRes]) => {
+      setSavedIds(new Set((savedRes.data ?? []).map(r => r.event_id)))
+      setCalendarIds(new Set((calRes.data ?? []).map(r => r.event_id)))
+    })
   }, [user])
 
   const handleWishlist = useCallback(async (event) => {
     if (!user) { showToast('Log in to save events'); return }
     if (savedIds.has(event.id)) {
-      await supabase.from('saved_events')
-        .delete().eq('user_id', user.id).eq('event_id', event.id)
-      setSavedIds((prev) => { const s = new Set(prev); s.delete(event.id); return s })
+      await supabase.from('saved_events').delete().eq('user_id', user.id).eq('event_id', event.id)
+      setSavedIds(prev => { const s = new Set(prev); s.delete(event.id); return s })
       showToast('Removed from wishlist')
     } else {
       await supabase.from('saved_events').insert({ user_id: user.id, event_id: event.id })
-      setSavedIds((prev) => new Set([...prev, event.id]))
+      setSavedIds(prev => new Set([...prev, event.id]))
       showToast('Added to wishlist ❤️')
     }
   }, [user, savedIds])
@@ -112,36 +166,65 @@ export default function Events() {
   }, [])
 
   const handleCalendarAdded = useCallback((event) => {
-    setCalendarIds((prev) => new Set([...prev, event.id]))
+    setCalendarIds(prev => new Set([...prev, event.id]))
     showToast('Added to your calendar! 📅')
   }, [])
 
-  const activeFilter = TABS.find((t) => t.label === activeTab)?.filter ?? (() => true)
-  const filtered = [...events.filter(activeFilter)].sort(sortWithNullsLast(SORT_FNS[sortBy] ?? SORT_FNS['date-asc']))
+  const filtered = [...events.filter(e => matchesAudience(e, filters.audience))]
+    .sort(sortWithNullsLast(SORT_FNS[sortBy] ?? SORT_FNS['date-asc']))
+
+  const activePills = buildActivePills(filters, setFilters)
 
   return (
     <div className="pt-6 space-y-5">
-      <div className="px-4">
-        <h1 className="text-2xl font-bold text-gray-900">Events</h1>
-        <p className="text-sm text-gray-500 mt-1">Upcoming family events across Singapore.</p>
+      {/* Header */}
+      <div className="px-4 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Events</h1>
+          <p className="text-sm text-gray-500 mt-1">Upcoming family events across Singapore.</p>
+        </div>
+        <button
+          onClick={() => setFilterOpen(true)}
+          className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors mt-1 ${
+            activePills.length > 0
+              ? 'bg-brand-600 text-white border-brand-600'
+              : 'bg-white text-gray-700 border-gray-200 hover:border-brand-300'
+          }`}
+        >
+          {/* Sliders icon */}
+          <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0">
+            <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="5"  cy="4"  r="1.5" fill="none" stroke="currentColor" strokeWidth="1.25" />
+            <circle cx="11" cy="8"  r="1.5" fill="none" stroke="currentColor" strokeWidth="1.25" />
+            <circle cx="5"  cy="12" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.25" />
+          </svg>
+          {activePills.length > 0 ? `Filter · ${activePills.length}` : 'Filter'}
+        </button>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1 px-4 no-scrollbar">
-        {TABS.map(({ label }) => (
+      {/* Active filter pills */}
+      {activePills.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 px-4 no-scrollbar">
+          {activePills.map((pill, i) => (
+            <button
+              key={i}
+              onClick={pill.onRemove}
+              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-xs font-medium"
+            >
+              {pill.label}
+              <span className="text-brand-400 ml-0.5">×</span>
+            </button>
+          ))}
           <button
-            key={label}
-            onClick={() => setActiveTab(label)}
-            className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-              activeTab === label
-                ? 'bg-brand-600 text-white border-brand-600'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'
-            }`}
+            onClick={() => setFilters(DEFAULT_FILTERS)}
+            className="shrink-0 text-xs text-gray-400 underline ml-1 whitespace-nowrap"
           >
-            {label}
+            Clear all
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="px-4 pb-4">
@@ -156,7 +239,15 @@ export default function Events() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center py-16 gap-3 text-center">
             <span className="text-4xl">🔍</span>
-            <p className="text-sm text-gray-500">No events found for this filter.</p>
+            <p className="text-sm text-gray-500">No events match your filters.</p>
+            {activePills.length > 0 && (
+              <button
+                onClick={() => setFilters(DEFAULT_FILTERS)}
+                className="text-sm text-brand-600 font-medium"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -166,7 +257,7 @@ export default function Events() {
                 onClick={() => setSortOpen(true)}
                 className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
               >
-                {SORT_OPTIONS.find((o) => o.key === sortBy)?.label}
+                {SORT_OPTIONS.find(o => o.key === sortBy)?.label}
                 <span className="text-gray-400 text-[10px]">▾</span>
               </button>
             </div>
@@ -185,6 +276,14 @@ export default function Events() {
           </div>
         )}
       </div>
+
+      {/* Filter drawer */}
+      <FilterDrawer
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        filters={filters}
+        onApply={setFilters}
+      />
 
       {/* Event detail sheet */}
       {detailEvent && (
@@ -209,7 +308,7 @@ export default function Events() {
         />
       )}
 
-      {/* Sort bottom sheet — z-[60] sits above bottom nav (z-50) */}
+      {/* Sort bottom sheet */}
       {sortOpen && (
         <div className="fixed inset-0 z-[60] flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSortOpen(false)} />

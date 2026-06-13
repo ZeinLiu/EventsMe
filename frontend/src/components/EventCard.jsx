@@ -25,6 +25,10 @@ function PriceTag({ is_free, price_min, price_max }) {
   return <span className="text-xs font-semibold text-gray-700">From {label}</span>
 }
 
+function msSince(ts) {
+  return ts ? Date.now() - new Date(ts).getTime() : Infinity
+}
+
 export default function EventCard({ event, isSaved, isInCalendar, onWishlist, onCalendar, onSource, onDetail }) {
   const displayDate = event.event_date
     ? formatDateRange(event.event_date, event.event_end_date)
@@ -32,15 +36,28 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
   const displayLocation = event.venue || event.location
   const catColor = CATEGORY_COLORS[event.category] ?? 'bg-gray-100 text-gray-600'
 
+  const age = msSince(event.created_at)
+  const isNew    = age < 48 * 60 * 60 * 1000
+  const isRecent = age < 7  * 24 * 60 * 60 * 1000
+
   function stop(fn) {
     return (e) => { e.stopPropagation(); fn?.() }
   }
 
   return (
     <div
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden cursor-pointer active:opacity-90 transition-opacity"
+      className={`bg-white rounded-2xl shadow-sm overflow-hidden cursor-pointer active:opacity-90 transition-opacity relative ${
+        isRecent
+          ? 'border border-gray-100 border-l-[3px] border-l-emerald-300'
+          : 'border border-gray-100'
+      }`}
       onClick={onDetail}
     >
+      {isNew && (
+        <span className="absolute top-2 right-2 z-10 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm tracking-wide">
+          New
+        </span>
+      )}
       {event.image_url && (
         <img
           src={event.image_url}

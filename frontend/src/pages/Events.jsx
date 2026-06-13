@@ -7,19 +7,19 @@ import CalendarBottomSheet from '../components/CalendarBottomSheet'
 import Toast from '../components/Toast'
 
 const SORT_OPTIONS = [
-  { key: 'date-asc',   label: 'Date',         sub: 'Soonest first', short: 'Date ↑' },
-  { key: 'date-desc',  label: 'Date',         sub: 'Latest first',  short: 'Date ↓' },
-  { key: 'price-asc',  label: 'Price',        sub: 'Low to high',   short: 'Price ↑' },
-  { key: 'price-desc', label: 'Price',        sub: 'High to low',   short: 'Price ↓' },
-  { key: 'newest',     label: 'Newest added', sub: '',              short: 'Newest' },
+  { key: 'created-at-desc', label: 'Latest Added' },
+  { key: 'date-asc',        label: 'Date (soonest first)' },
+  { key: 'date-desc',       label: 'Date (latest first)' },
+  { key: 'price-asc',       label: 'Price (low to high)' },
+  { key: 'price-desc',      label: 'Price (high to low)' },
 ]
 
 const SORT_FNS = {
-  'date-asc':  (a, b) => (a.event_date ?? '').localeCompare(b.event_date ?? ''),
-  'date-desc': (a, b) => (b.event_date ?? '').localeCompare(a.event_date ?? ''),
-  'price-asc': (a, b) => (a.price_min ?? 0) - (b.price_min ?? 0),
-  'price-desc':(a, b) => (b.price_max ?? 0) - (a.price_max ?? 0),
-  'newest':    (a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''),
+  'created-at-desc': (a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''),
+  'date-asc':        (a, b) => (a.event_date ?? '').localeCompare(b.event_date ?? ''),
+  'date-desc':       (a, b) => (b.event_date ?? '').localeCompare(a.event_date ?? ''),
+  'price-asc':       (a, b) => (a.price_min ?? 0) - (b.price_min ?? 0),
+  'price-desc':      (a, b) => (b.price_max ?? 0) - (a.price_max ?? 0),
 }
 
 // Null event_date always sorts to the bottom regardless of direction
@@ -55,7 +55,7 @@ export default function Events() {
   const [savedIds, setSavedIds] = useState(new Set())
   const [calendarIds, setCalendarIds] = useState(new Set())
 
-  const [sortBy, setSortBy] = useState('date-asc')
+  const [sortBy, setSortBy] = useState('created-at-desc')
   const [sortOpen, setSortOpen] = useState(false)
 
   const [detailEvent, setDetailEvent] = useState(null)
@@ -73,7 +73,7 @@ export default function Events() {
       setError('')
 
       const [eventsRes, savedRes, calRes] = await Promise.all([
-        supabase.from('events').select('*').eq('is_archived', false).order('event_date', { ascending: true }),
+        supabase.from('events').select('*').eq('is_archived', false).order('created_at', { ascending: false }),
         user
           ? supabase.from('saved_events').select('event_id').eq('user_id', user.id)
           : Promise.resolve({ data: [] }),
@@ -166,7 +166,7 @@ export default function Events() {
                 onClick={() => setSortOpen(true)}
                 className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
               >
-                <span className="text-gray-400">Sort:</span> {SORT_OPTIONS.find((o) => o.key === sortBy)?.short}
+                {SORT_OPTIONS.find((o) => o.key === sortBy)?.label}
                 <span className="text-gray-400 text-[10px]">▾</span>
               </button>
             </div>
@@ -223,10 +223,7 @@ export default function Events() {
                   onClick={() => { setSortBy(opt.key); setSortOpen(false) }}
                   className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
                 >
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">{opt.label}</span>
-                    {opt.sub && <span className="text-xs text-gray-400 ml-2">{opt.sub}</span>}
-                  </div>
+                  <span className="text-sm font-medium text-gray-900 text-left">{opt.label}</span>
                   {sortBy === opt.key && <span className="text-brand-600 text-sm font-bold">✓</span>}
                 </button>
               ))}

@@ -48,7 +48,7 @@ function DaySelector({ value, onChange }) {
         <button
           key={d.value}
           onClick={() => toggle(d.value)}
-          className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
+          className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
             selected.has(d.value)
               ? 'bg-brand-600 text-white'
               : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -65,7 +65,7 @@ function RunResult({ result }) {
   if (!result) return null
   const ok = result.status === 'ok' || result.ok
   return (
-    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
       ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
     }`}>
       {ok
@@ -151,13 +151,13 @@ function SourceRow({ source, onUpdate }) {
             <span className={`text-sm font-medium ${draft.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
               {source.label}
             </span>
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${typeColor}`}>
+            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${typeColor}`}>
               {source.type}
             </span>
             <select
               value={draft.language || 'en'}
               onChange={(e) => setDraft((d) => ({ ...d, language: e.target.value }))}
-              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand-500 ${langColor}`}
+              className={`text-xs font-semibold px-1.5 py-0.5 rounded border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand-500 ${langColor}`}
             >
               <option value="en">EN</option>
               <option value="zh">ZH</option>
@@ -166,7 +166,7 @@ function SourceRow({ source, onUpdate }) {
           </div>
 
           {/* Stats */}
-          <div className="flex gap-3 text-[11px] text-gray-400 flex-wrap">
+          <div className="flex gap-3 text-xs text-gray-400 flex-wrap">
             <span>Runs: <span className="text-gray-600 font-medium">{source.run_count ?? 0}</span></span>
             <span>Events: <span className="text-gray-600 font-medium">{source.total_events_found ?? 0}</span></span>
             <span>Avg: <span className="text-gray-600 font-medium">{Number(source.avg_events_per_run ?? 0).toFixed(1)}/run</span></span>

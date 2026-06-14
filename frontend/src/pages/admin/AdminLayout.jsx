@@ -53,7 +53,7 @@ export default function AdminLayout() {
               <Link to="/" className="text-base font-bold text-gray-900 hover:text-brand-600 transition-colors">
                 EventsMe
               </Link>
-              <span className="text-[11px] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
                 Admin
               </span>
             </div>

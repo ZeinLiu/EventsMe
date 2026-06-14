@@ -237,7 +237,7 @@ export default function AdminUsage() {
                     </td>
                     <td className="px-4 py-3">
                       {run.source_type && (
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${TYPE_COLORS[run.source_type] ?? 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${TYPE_COLORS[run.source_type] ?? 'bg-gray-100 text-gray-600'}`}>
                           {run.source_type}
                         </span>
                       )}
@@ -250,11 +250,11 @@ export default function AdminUsage() {
                     <td className="px-4 py-3 text-right tabular-nums text-gray-600">{run.events_found ?? 0}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-600">{fmtTokens(run.tokens_used ?? 0)}</td>
                     <td className="px-5 py-3 text-center">
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${STATUS_COLORS[run.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${STATUS_COLORS[run.status] ?? 'bg-gray-100 text-gray-600'}`}>
                         {run.status ?? '—'}
                       </span>
                       {run.status === 'error' && run.error_message && (
-                        <p className="text-[10px] text-red-500 mt-0.5 max-w-[160px] truncate" title={run.error_message}>
+                        <p className="text-xs text-red-500 mt-0.5 max-w-[160px] truncate" title={run.error_message}>
                           {run.error_message}
                         </p>
                       )}
@@ -299,7 +299,7 @@ export default function AdminUsage() {
                       <span className="block truncate" title={s.label}>{s.label}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${TYPE_COLORS[s.type] ?? 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${TYPE_COLORS[s.type] ?? 'bg-gray-100 text-gray-600'}`}>
                         {s.type}
                       </span>
                     </td>

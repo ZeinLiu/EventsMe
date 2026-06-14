@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { buildEventsQuery, matchesAudience, DEFAULT_FILTERS } from '../lib/eventFilters'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 
 const AUDIENCE_OPTIONS = [
   { value: 'toddlers',   label: 'Toddlers 0-3' },
@@ -41,6 +42,7 @@ function RadioOption({ name, value, checked, label, onChange }) {
 }
 
 export default function FilterDrawer({ open, onClose, filters, onApply }) {
+  useBodyScrollLock(open)
   const [draft, setDraft] = useState(filters)
   const [categories, setCategories] = useState([])
   const [sources, setSources] = useState([])

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 
 function formatDateRange(start, end) {
   if (!start) return ''
@@ -16,6 +17,7 @@ function formatDateRange(start, end) {
 }
 
 export default function CalendarBottomSheet({ event, isInCalendar, onClose, onAdded }) {
+  useBodyScrollLock(true)
   const { user } = useAuth()
   const today = new Date().toISOString().split('T')[0]
   const minDate = event.event_date ?? today
@@ -47,7 +49,8 @@ export default function CalendarBottomSheet({ event, isInCalendar, onClose, onAd
     <div className="fixed inset-0 z-50" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50" />
       <div
-        className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl animate-slide-up"
+        className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl animate-slide-up flex flex-col"
+        style={{ maxHeight: '90vh' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -63,7 +66,7 @@ export default function CalendarBottomSheet({ event, isInCalendar, onClose, onAd
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         </div>
 
-        <div className="px-5 pb-8 space-y-4">
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
           {isInCalendar ? (
             <div className="bg-blue-50 rounded-2xl p-4 text-center space-y-2">
               <p className="text-sm font-medium text-blue-800">Already in your calendar</p>

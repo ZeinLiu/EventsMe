@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { chatWithWizard, WIZARD_OPENING } from '../lib/claude'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 
 const TAG_COLORS = [
   'bg-blue-100 text-blue-700',
@@ -253,6 +254,7 @@ function EditForm({ form, saving, error, onChange, onBack, onSave }) {
 
 // ── Main modal ───────────────────────────────────────────────
 export default function FamilyWizardModal({ isOpen, onClose, onSaved }) {
+  useBodyScrollLock(isOpen)
   const { user } = useAuth()
 
   const [displayMsgs, setDisplayMsgs] = useState([])

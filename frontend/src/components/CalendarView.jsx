@@ -41,7 +41,7 @@ export default function CalendarView() {
         {cells.map((day, i) => (
           <div
             key={i}
-            className={`text-sm py-1.5 rounded-full mx-auto w-8 h-8 flex items-center justify-center ${
+            className={`text-sm rounded-full mx-auto w-10 h-10 flex items-center justify-center ${
               day === today
                 ? 'bg-brand-600 text-white font-bold'
                 : day

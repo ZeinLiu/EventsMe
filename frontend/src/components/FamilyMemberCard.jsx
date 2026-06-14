@@ -36,14 +36,14 @@ export default function FamilyMemberCard({ member, onEdit, onDelete }) {
         <div className="flex gap-1 shrink-0">
           <button
             onClick={() => onEdit?.(member)}
-            className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors text-sm"
+            className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors text-sm"
             aria-label="Edit"
           >
             ✏️
           </button>
           <button
             onClick={() => onDelete?.(member.id)}
-            className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors text-sm"
+            className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors text-sm"
             aria-label="Delete"
           >
             🗑️

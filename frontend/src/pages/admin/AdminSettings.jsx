@@ -150,7 +150,7 @@ export default function AdminSettings() {
               {s.description && (
                 <p className="text-xs text-gray-500 mt-0.5 leading-snug">{s.description}</p>
               )}
-              <p className="text-[10px] text-gray-400 mt-1 font-mono">{s.key}</p>
+              <p className="text-xs text-gray-400 mt-1 font-mono">{s.key}</p>
             </div>
             <div className="flex flex-col items-end gap-1 shrink-0">
               <SettingInput
@@ -159,7 +159,7 @@ export default function AdminSettings() {
                 onChange={(v) => setDraft((d) => ({ ...d, [s.key]: v }))}
               />
               {s.updated_at && (
-                <span className="text-[10px] text-gray-400">
+                <span className="text-xs text-gray-400">
                   {new Date(s.updated_at).toLocaleString('en-SG', { dateStyle: 'short', timeStyle: 'short' })}
                 </span>
               )}

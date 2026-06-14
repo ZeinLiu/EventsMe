@@ -31,7 +31,7 @@ export default function Chat() {
         ))}
       </div>
 
-      <div className="fixed bottom-20 left-0 right-0 max-w-md mx-auto px-4">
+      <div className="fixed bottom-20 left-0 right-0 max-w-md mx-auto px-4" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-2 shadow-md">
           <input
             type="text"

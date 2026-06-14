@@ -58,7 +58,7 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
         <img
           src={event.image_url}
           alt={event.title}
-          className="w-full h-[180px] object-cover"
+          className="w-full aspect-video object-cover"
           loading="lazy"
           onError={(e) => { e.currentTarget.style.display = 'none' }}
         />
@@ -77,7 +77,7 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {isNew && (
-              <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wide">
+              <span className="bg-emerald-500 text-white text-xs font-bold px-2 py-0.5 rounded-full tracking-wide">
                 New
               </span>
             )}
@@ -114,7 +114,7 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
         <div className="flex gap-2 pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={stop(onWishlist)}
-            className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium rounded-xl border transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-medium rounded-xl border transition-colors ${
               isSaved
                 ? 'border-red-300 bg-red-50 text-red-600'
                 : 'border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -124,7 +124,7 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
           </button>
           <button
             onClick={stop(onCalendar)}
-            className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium rounded-xl border transition-colors ${
+            className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-medium rounded-xl border transition-colors ${
               isInCalendar
                 ? 'border-brand-300 bg-brand-50 text-brand-600'
                 : 'border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -134,7 +134,7 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
           </button>
           <button
             onClick={stop(onSource)}
-            className="flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
           >
             🔗 Source
           </button>

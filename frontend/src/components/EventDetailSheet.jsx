@@ -49,7 +49,10 @@ function PriceTag({ is_free, price_min, price_max }) {
   return <span className="text-xs font-semibold text-gray-700">From {label}</span>
 }
 
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
+
 export default function EventDetailSheet({ event, isSaved, isInCalendar, onWishlist, onCalendar, onSource, onClose }) {
+  useBodyScrollLock(true)
   const catColor = CATEGORY_COLORS[event.category] ?? 'bg-gray-100 text-gray-600'
   const displayDate = formatDateRange(event.event_date, event.event_end_date)
   const displayLocation = event.venue || event.location
@@ -75,11 +78,11 @@ export default function EventDetailSheet({ event, isSaved, isInCalendar, onWishl
             <img
               src={event.image_url}
               alt={event.title}
-              className="w-full h-52 object-cover rounded-t-3xl"
+              className="w-full aspect-[16/7] object-cover rounded-t-3xl"
               loading="lazy"
             />
           ) : (
-            <div className={`w-full h-52 bg-gradient-to-br ${CATEGORY_GRADIENTS[event.category] ?? 'from-gray-300 to-gray-400'} flex items-center justify-center rounded-t-3xl`}>
+            <div className={`w-full aspect-[16/7] bg-gradient-to-br ${CATEGORY_GRADIENTS[event.category] ?? 'from-gray-300 to-gray-400'} flex items-center justify-center rounded-t-3xl`}>
               <span className="text-6xl">{CATEGORY_EMOJI[event.category] ?? '🎉'}</span>
             </div>
           )}
@@ -116,7 +119,7 @@ export default function EventDetailSheet({ event, isSaved, isInCalendar, onWishl
         </div>
 
         {/* Sticky action buttons */}
-        <div className="p-4 border-t border-gray-100 flex gap-2">
+        <div className="p-4 border-t border-gray-100 flex gap-2" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           <button
             onClick={onWishlist}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-xl border transition-colors ${

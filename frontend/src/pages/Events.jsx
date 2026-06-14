@@ -258,7 +258,7 @@ export default function Events() {
                 className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
               >
                 {SORT_OPTIONS.find(o => o.key === sortBy)?.label}
-                <span className="text-gray-400 text-[10px]">▾</span>
+                <span className="text-gray-400 text-xs">▾</span>
               </button>
             </div>
             {filtered.map((event) => (

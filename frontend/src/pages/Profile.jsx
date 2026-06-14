@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import FamilyMemberCard from '../components/FamilyMemberCard'
 import FamilyWizardModal from '../components/FamilyWizardModal'
 import { useAdminRole } from './admin/AdminLayout'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 
 const DAYS = ['Weekdays', 'Saturday', 'Sunday', 'Public Holidays']
 const ROLE_OPTIONS = ['Parent', 'Child', 'Grandparent', 'Guardian', 'Other']
@@ -12,6 +13,7 @@ const AVAIL_OPTIONS = ['Weekdays', 'Weekends', 'Both']
 
 // ── Inline edit modal for existing members ────────────────────
 function EditMemberModal({ member, onClose, onSaved }) {
+  useBodyScrollLock(true)
   const [form, setForm] = useState({
     name: member.name,
     age: member.age,
@@ -109,7 +111,7 @@ function EditMemberModal({ member, onClose, onSaved }) {
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{error}</div>
           )}
 
-          <div className="flex gap-3 pb-2">
+          <div className="flex gap-3" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
             <button onClick={onClose}
               className="flex-1 border border-gray-200 text-gray-700 rounded-xl py-3 text-sm font-medium hover:bg-gray-50 transition-colors">
               Cancel

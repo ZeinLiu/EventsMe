@@ -294,7 +294,7 @@ Deno.serve(async (req) => {
       category: event.category, event_date: event.event_date, event_end_date: event.event_end_date,
       venue: event.venue, price_min: event.price_min, price_max: event.price_max,
       is_free: event.is_free, source_url: event.source_url, booking_url: event.booking_url,
-      image_url: event.image_url, source_name: event.source_name,
+      image_url: event.image_url, source_name: event.source_name, is_archived: false,
     })
     if (!error) newCount++
   }

@@ -48,7 +48,7 @@ export function buildEventsQuery(filters) {
   let query = supabase
     .from('events')
     .select('*')
-    .eq('is_archived', false)
+    .or('is_archived.is.null,is_archived.eq.false')
 
   if (filters.categories.length > 0)
     query = query.in('category', filters.categories)

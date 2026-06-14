@@ -195,6 +195,12 @@ Deno.serve(async (req) => {
         headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ only_upcoming: true }),
       }).catch(() => {/* non-fatal */})
+
+      await fetch(`${supabaseUrl}/functions/v1/send-daily-summary`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).catch(() => {/* non-fatal */})
     }
 
     return new Response(

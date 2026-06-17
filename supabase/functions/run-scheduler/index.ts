@@ -196,11 +196,8 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ only_upcoming: true }),
       }).catch(() => {/* non-fatal */})
 
-      await fetch(`${supabaseUrl}/functions/v1/send-daily-summary`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }).catch(() => {/* non-fatal */})
+      // Email summary is sent by GitHub Actions after this function returns,
+      // so it fires even when this function times out mid-run.
     }
 
     return new Response(

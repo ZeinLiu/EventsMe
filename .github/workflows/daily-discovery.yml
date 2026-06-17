@@ -24,6 +24,18 @@ jobs:
           echo ""
           echo "Exit: $?"
 
+      - name: Send daily email summary
+        if: always()
+        run: |
+          echo "=== Send Daily Summary ==="
+          curl -s -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/send-daily-summary" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 30 \
+            | python3 -m json.tool || true
+
       - name: Print summary
         if: always()
         run: |

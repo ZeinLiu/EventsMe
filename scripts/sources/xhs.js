@@ -12,7 +12,7 @@ function canonicalUrl(url) {
     const u = new URL(url)
     if (u.pathname.startsWith('/search_result/')) {
       const noteId = u.pathname.split('/').filter(Boolean).pop()
-      return `https://www.xiaohongshu.com/explore/${noteId}`
+      return `https://www.xiaohongshu.com/discovery/item/${noteId}`
     }
   } catch { /* leave as-is */ }
   return url

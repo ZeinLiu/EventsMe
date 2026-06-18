@@ -55,6 +55,39 @@ async function fetchImage(url: string): Promise<string | null> {
   }
 }
 
+async function findImageViaClaude(title: string, apiKey: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        system: 'You find event cover images. Search for the event and return ONLY a single direct image URL (must end in .jpg, .jpeg, .png, or .webp). No explanation, no markdown — just the URL. If none found, return: null',
+        messages: [{ role: 'user', content: `Find a cover image for this Singapore event: "${title}"` }],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const text = ((data.content ?? []) as any[])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim()
+    if (!text || text === 'null') return null
+    const urlMatch = text.match(/https?:\/\/\S+\.(?:jpg|jpeg|png|webp)/i)
+    return urlMatch?.[0]?.replace(/[)"',]+$/, '') ?? null
+  } catch {
+    return null
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -62,6 +95,8 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   )
+
+  const claudeApiKey = Deno.env.get('CLAUDE_API_KEY') ?? ''
 
   // Optional: limit how many to process per call (default 50)
   let body: any = {}
@@ -97,7 +132,12 @@ Deno.serve(async (req) => {
   const results: Array<{ title: string; image?: string; status: string }> = []
 
   for (const event of events) {
-    const img = await fetchImage(event.source_url)
+    // Try HTML scraping first; fall back to Claude web_search for XHS and other protected sources
+    let img = await fetchImage(event.source_url)
+    if (!img && claudeApiKey) {
+      img = await findImageViaClaude(event.title, claudeApiKey)
+    }
+
     if (img) {
       const { error: updateErr } = await supabase
         .from('events')

@@ -55,13 +55,20 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
       onClick={onDetail}
     >
       {event.image_url && (
-        <img
-          src={event.image_url}
-          alt={event.title}
-          className="w-full aspect-video object-cover"
-          loading="lazy"
-          onError={(e) => { e.currentTarget.style.display = 'none' }}
-        />
+        <div className="relative">
+          <img
+            src={event.image_url}
+            alt={event.title}
+            className="w-full aspect-video object-cover"
+            loading="lazy"
+            onError={(e) => { e.currentTarget.parentElement.style.display = 'none' }}
+          />
+          {displayDate && (
+            <span className="absolute bottom-2 left-2 bg-black/55 text-white text-xs font-medium px-2.5 py-1 rounded-full backdrop-blur-sm">
+              {displayDate}
+            </span>
+          )}
+        </div>
       )}
 
       <div className="p-4 space-y-2.5">
@@ -90,7 +97,7 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
 
         {/* Date + location */}
         <div className="flex flex-col gap-0.5 text-xs text-gray-500">
-          {displayDate && <span>📅 {displayDate}</span>}
+          {displayDate && !event.image_url && <span>📅 {displayDate}</span>}
           {displayLocation && <span>📍 {displayLocation}</span>}
         </div>
 

@@ -512,6 +512,11 @@ export default function AdminDiscovery() {
         </div>
       )}
 
+      {/* Manual import queue — top of page for quick access */}
+      <div className="mb-5">
+        <ImportQueue />
+      </div>
+
       <div className="space-y-5">
         {tiers.map((tier) => {
           const tierSources = sources.filter((s) => (s.tier ?? 1) === tier)
@@ -539,11 +544,6 @@ export default function AdminDiscovery() {
             No discovery sources found.
           </div>
         )}
-      </div>
-
-      {/* Manual import queue */}
-      <div className="mt-5">
-        <ImportQueue />
       </div>
 
       {/* Add new source */}

@@ -1,0 +1,14 @@
+{
+  "name": "eventsme-scripts",
+  "version": "1.0.0",
+  "description": "Local sync scripts for EventsMe — runs opencli-based sources on a schedule",
+  "main": "local-sync.js",
+  "scripts": {
+    "sync": "node local-sync.js",
+    "sync:xhs": "node local-sync.js --type xhs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1"
+  }
+}

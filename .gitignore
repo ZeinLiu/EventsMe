@@ -5,6 +5,10 @@ node_modules/
 .env
 .env.local
 .env.*.local
+scripts/.env
+
+# Local sync logs (pm2 writes here if out_file is set)
+logs/
 
 # Build output
 dist/

@@ -23,7 +23,11 @@ function fetchNote(url) {
       timeout: 30_000,
       env: { ...process.env, NO_UPDATE_NOTIFIER: '1' },
     })
-    return JSON.parse(raw)
+    const parsed = JSON.parse(raw)
+    // opencli returns [{field, value}, ...] — normalise to plain object
+    if (Array.isArray(parsed))
+      return parsed.reduce((obj, { field, value }) => ({ ...obj, [field]: value }), {})
+    return parsed
   } catch {
     return null
   }

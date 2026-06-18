@@ -32,6 +32,32 @@ function sortWithNullsLast(fn) {
   }
 }
 
+function formatShortDate(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleDateString('en-SG', { day: 'numeric', month: 'short' })
+}
+
+// Group events with the same title + venue into one card with extra date chips.
+// Uses earliest date as the base; remaining dates shown as chips below the card.
+function groupEventSeries(events) {
+  const groups = new Map()
+  for (const e of events) {
+    const key = (e.title?.toLowerCase().trim() ?? '') + '|' + (e.venue?.toLowerCase().trim() ?? '')
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(e)
+  }
+  return Array.from(groups.values()).map(group => {
+    if (group.length === 1) return group[0]
+    const sorted = [...group].sort((a, b) => (a.event_date ?? '').localeCompare(b.event_date ?? ''))
+    const [base, ...rest] = sorted
+    return {
+      ...base,
+      _extraDates: rest.map(e => e.event_date).filter(Boolean),
+      _groupIds: sorted.map(e => e.id),
+    }
+  })
+}
+
 function buildActivePills(filters, setFilters) {
   const pills = []
 
@@ -170,8 +196,9 @@ export default function Events() {
     showToast('Added to your calendar! 📅')
   }, [])
 
-  const filtered = [...events]
-    .sort(sortWithNullsLast(SORT_FNS[sortBy] ?? SORT_FNS['date-asc']))
+  const filtered = groupEventSeries(
+    [...events].sort(sortWithNullsLast(SORT_FNS[sortBy] ?? SORT_FNS['date-asc']))
+  )
 
   const activePills = buildActivePills(filters, setFilters)
 
@@ -252,7 +279,10 @@ export default function Events() {
         ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-400">{filtered.length} event{filtered.length !== 1 ? 's' : ''}</p>
+              <p className="text-xs text-gray-400">
+                {filtered.length} event{filtered.length !== 1 ? 's' : ''}
+                {events.length > filtered.length ? ` (${events.length} dates)` : ''}
+              </p>
               <button
                 onClick={() => setSortOpen(true)}
                 className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
@@ -262,16 +292,27 @@ export default function Events() {
               </button>
             </div>
             {filtered.map((event) => (
-              <EventCard
-                key={event.id}
-                event={event}
-                isSaved={savedIds.has(event.id)}
-                isInCalendar={calendarIds.has(event.id)}
-                onDetail={() => setDetailEvent(event)}
-                onWishlist={() => handleWishlist(event)}
-                onCalendar={() => setCalendarEvent(event)}
-                onSource={() => handleSource(event)}
-              />
+              <div key={event.id}>
+                <EventCard
+                  event={event}
+                  isSaved={event._groupIds ? event._groupIds.some(id => savedIds.has(id)) : savedIds.has(event.id)}
+                  isInCalendar={event._groupIds ? event._groupIds.some(id => calendarIds.has(id)) : calendarIds.has(event.id)}
+                  onDetail={() => setDetailEvent(event)}
+                  onWishlist={() => handleWishlist(event)}
+                  onCalendar={() => setCalendarEvent(event)}
+                  onSource={() => handleSource(event)}
+                />
+                {event._extraDates?.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 px-1 pt-1.5">
+                    <span className="text-xs text-gray-400">Also on:</span>
+                    {event._extraDates.map(d => (
+                      <span key={d} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                        {formatShortDate(d)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}

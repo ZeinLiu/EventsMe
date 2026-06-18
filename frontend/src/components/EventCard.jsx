@@ -63,23 +63,14 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
             loading="lazy"
             onError={(e) => { e.currentTarget.parentElement.style.display = 'none' }}
           />
-          {(displayDate || extraDates?.length > 0) && (
-            <div className="absolute bottom-2 left-2 flex flex-col items-start gap-1">
-              {displayDate && (
-                <span className="bg-black/55 text-white text-xs font-medium px-2.5 py-1 rounded-full backdrop-blur-sm">
-                  {displayDate}
+          {extraDates?.length > 0 && (
+            <div className="absolute bottom-2 left-2 flex flex-wrap gap-1 items-center">
+              <span className="text-white/70 text-xs">Also on:</span>
+              {extraDates.map((d) => (
+                <span key={d} className="bg-black/45 text-white text-xs px-2 py-0.5 rounded-full backdrop-blur-sm">
+                  {d}
                 </span>
-              )}
-              {extraDates?.length > 0 && (
-                <div className="flex flex-wrap gap-1 items-center">
-                  <span className="text-white/70 text-xs">Also on:</span>
-                  {extraDates.map((d) => (
-                    <span key={d} className="bg-black/45 text-white text-xs px-2 py-0.5 rounded-full backdrop-blur-sm">
-                      {d}
-                    </span>
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
           )}
         </div>
@@ -111,7 +102,7 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
 
         {/* Date + location */}
         <div className="flex flex-col gap-0.5 text-xs text-gray-500">
-          {displayDate && !event.image_url && <span>📅 {displayDate}</span>}
+          {displayDate && <span>📅 {displayDate}</span>}
           {!event.image_url && extraDates?.length > 0 && (
             <div className="flex flex-wrap gap-1 items-center">
               <span className="text-gray-400">Also on:</span>

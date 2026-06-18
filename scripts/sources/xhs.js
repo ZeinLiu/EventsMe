@@ -11,6 +11,7 @@ function searchXHS(query) {
   const raw = execFileSync('opencli', ['rednote', 'search', query, '-f', 'json'], {
     encoding: 'utf8',
     timeout: 60_000,
+    env: { ...process.env, NO_UPDATE_NOTIFIER: '1' },
   })
   return JSON.parse(raw)
 }
@@ -20,6 +21,7 @@ function fetchNote(url) {
     const raw = execFileSync('opencli', ['rednote', 'note', url, '-f', 'json'], {
       encoding: 'utf8',
       timeout: 30_000,
+      env: { ...process.env, NO_UPDATE_NOTIFIER: '1' },
     })
     return JSON.parse(raw)
   } catch {
@@ -68,7 +70,7 @@ Today: ${today}. Only include events happening in the future. Return [] if no ac
         content: JSON.stringify(
           notes.map(n => ({
             title:        n.title,
-            content:      (n.content ?? n.body ?? '').slice(0, 600),
+            content:      (n.content ?? n.body ?? '').slice(0, 1000),
             tags:         n.tags ?? [],
             source_url:   n.url,
             published_at: n.published_at,

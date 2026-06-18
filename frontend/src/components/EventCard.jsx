@@ -30,7 +30,7 @@ function msSince(ts) {
   return ts ? Date.now() - new Date(ts).getTime() : Infinity
 }
 
-export default function EventCard({ event, isSaved, isInCalendar, onWishlist, onCalendar, onSource, onDetail }) {
+export default function EventCard({ event, isSaved, isInCalendar, onWishlist, onCalendar, onSource, onDetail, extraDates }) {
   const displayDate = event.event_date
     ? formatDateRange(event.event_date, event.event_end_date)
     : event.date
@@ -63,10 +63,24 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
             loading="lazy"
             onError={(e) => { e.currentTarget.parentElement.style.display = 'none' }}
           />
-          {displayDate && (
-            <span className="absolute bottom-2 left-2 bg-black/55 text-white text-xs font-medium px-2.5 py-1 rounded-full backdrop-blur-sm">
-              {displayDate}
-            </span>
+          {(displayDate || extraDates?.length > 0) && (
+            <div className="absolute bottom-2 left-2 flex flex-col items-start gap-1">
+              {displayDate && (
+                <span className="bg-black/55 text-white text-xs font-medium px-2.5 py-1 rounded-full backdrop-blur-sm">
+                  {displayDate}
+                </span>
+              )}
+              {extraDates?.length > 0 && (
+                <div className="flex flex-wrap gap-1 items-center">
+                  <span className="text-white/70 text-xs">Also on:</span>
+                  {extraDates.map((d) => (
+                    <span key={d} className="bg-black/45 text-white text-xs px-2 py-0.5 rounded-full backdrop-blur-sm">
+                      {d}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -98,6 +112,14 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
         {/* Date + location */}
         <div className="flex flex-col gap-0.5 text-xs text-gray-500">
           {displayDate && !event.image_url && <span>📅 {displayDate}</span>}
+          {!event.image_url && extraDates?.length > 0 && (
+            <div className="flex flex-wrap gap-1 items-center">
+              <span className="text-gray-400">Also on:</span>
+              {extraDates.map((d) => (
+                <span key={d} className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{d}</span>
+              ))}
+            </div>
+          )}
           {displayLocation && <span>📍 {displayLocation}</span>}
         </div>
 

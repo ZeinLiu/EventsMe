@@ -301,27 +301,17 @@ export default function Events() {
               </button>
             </div>
             {filtered.map((event) => (
-              <div key={event.id}>
-                <EventCard
-                  event={event}
-                  isSaved={event._groupIds ? event._groupIds.some(id => savedIds.has(id)) : savedIds.has(event.id)}
-                  isInCalendar={event._groupIds ? event._groupIds.some(id => calendarIds.has(id)) : calendarIds.has(event.id)}
-                  onDetail={() => setDetailEvent(event)}
-                  onWishlist={() => handleWishlist(event)}
-                  onCalendar={() => setCalendarEvent(event)}
-                  onSource={() => handleSource(event)}
-                />
-                {event._extraDates?.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5 px-1 pt-1.5">
-                    <span className="text-xs text-gray-400">Also on:</span>
-                    {event._extraDates.map(d => (
-                      <span key={d} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                        {formatShortDate(d)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <EventCard
+                key={event.id}
+                event={event}
+                isSaved={event._groupIds ? event._groupIds.some(id => savedIds.has(id)) : savedIds.has(event.id)}
+                isInCalendar={event._groupIds ? event._groupIds.some(id => calendarIds.has(id)) : calendarIds.has(event.id)}
+                onDetail={() => setDetailEvent(event)}
+                onWishlist={() => handleWishlist(event)}
+                onCalendar={() => setCalendarEvent(event)}
+                onSource={() => handleSource(event)}
+                extraDates={event._extraDates?.map(formatShortDate)}
+              />
             ))}
           </div>
         )}

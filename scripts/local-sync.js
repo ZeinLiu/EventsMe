@@ -10,6 +10,56 @@ const HANDLERS = {
   // Just add the type key and a matching file in sources/
 }
 
+// ── Pending imports queue ──────────────────────────────────────
+async function processPendingImports(supabase) {
+  const { data: pending } = await supabase
+    .from('pending_imports')
+    .select('*')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+
+  if (!pending?.length) return
+
+  console.log(`\n── Pending imports: ${pending.length} item(s) ─────────`)
+
+  for (const item of pending) {
+    console.log(`[PendingImport] ${item.url}`)
+
+    // Detect source type from URL
+    const isXHS = /rednote\.com|xiaohongshu\.com|xhslink\.com/.test(item.url)
+    if (!isXHS) {
+      await supabase.from('pending_imports').update({
+        status: 'failed',
+        result: { error: 'Unsupported URL — only XHS/rednote URLs are supported' },
+        processed_at: new Date().toISOString(),
+      }).eq('id', item.id)
+      continue
+    }
+
+    await supabase.from('pending_imports').update({ status: 'processing' }).eq('id', item.id)
+
+    try {
+      const xhs = require('./sources/xhs')
+      const result = await xhs.importFromUrl(item.url, supabase)
+      await supabase.from('pending_imports').update({
+        status: 'done',
+        result,
+        processed_at: new Date().toISOString(),
+      }).eq('id', item.id)
+      console.log(`[PendingImport] ✓ ${result.new_events} event(s): ${result.titles?.join(', ') || 'none'}`)
+    } catch (err) {
+      await supabase.from('pending_imports').update({
+        status: 'failed',
+        result: { error: err.message },
+        processed_at: new Date().toISOString(),
+      }).eq('id', item.id)
+      console.warn(`[PendingImport] ✗ ${err.message}`)
+    }
+
+    await new Promise(r => setTimeout(r, 2000))
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────
 async function main() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -49,6 +99,9 @@ async function main() {
     console.log('No active local sources found.')
     return
   }
+
+  // Process any manually queued URLs first
+  await processPendingImports(supabase)
 
   console.log(`\nFound ${sources.length} source(s) to process\n`)
 

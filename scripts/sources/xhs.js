@@ -194,4 +194,48 @@ async function run(source, supabase) {
   return { new_events: newCount, searched: recent.length, fetched: notes.length, tokens }
 }
 
-module.exports = { run }
+// ── Single-URL import (for pending_imports queue) ─────────────
+
+async function importFromUrl(url, supabase) {
+  const today = new Date().toISOString().split('T')[0]
+
+  console.log(`[ManualImport] Fetching note: ${url}`)
+  const note = fetchNote(url)
+  if (!note) throw new Error('opencli could not fetch note (security block or bad URL)')
+
+  // Check if already in DB
+  const { data: existing } = await supabase.from('events').select('id').eq('source_url', url).maybeSingle()
+  if (existing) return { new_events: 0, titles: [], skipped: 'already in DB' }
+
+  console.log(`[ManualImport] Sending to Claude`)
+  const { events, tokens } = await extractEvents([{ ...note, url }], today)
+  console.log(`[ManualImport] Claude extracted ${events.length} event(s) using ${tokens} tokens`)
+
+  const titles = []
+  for (const event of events) {
+    const { error } = await supabase.from('events').insert({
+      title:          event.title          ?? null,
+      description:    event.description    ?? null,
+      short_summary:  event.short_summary  ?? null,
+      category:       event.category       ?? null,
+      audience:       Array.isArray(event.audience) ? event.audience : null,
+      event_date:     event.event_date     ?? null,
+      event_end_date: event.event_end_date ?? null,
+      venue:          event.venue          ?? null,
+      price_min:      Number(event.price_min)  || 0,
+      price_max:      Number(event.price_max)  || 0,
+      is_free:        Boolean(event.is_free),
+      source_url:     event.source_url     ?? url,
+      booking_url:    event.booking_url    ?? null,
+      image_url:      null,
+      source_name:    'XHS',
+      language:       'zh',
+    })
+    if (!error) titles.push(event.title ?? '(untitled)')
+    else console.warn(`[ManualImport]   Insert failed: ${error.message}`)
+  }
+
+  return { new_events: titles.length, titles, tokens }
+}
+
+module.exports = { run, importFromUrl }

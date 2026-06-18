@@ -318,6 +318,141 @@ function AddSourceForm({ onAdded, onCancel }) {
   )
 }
 
+const STATUS_STYLES = {
+  pending:    'bg-yellow-100 text-yellow-700',
+  processing: 'bg-blue-100 text-blue-700',
+  done:       'bg-green-100 text-green-700',
+  failed:     'bg-red-100 text-red-700',
+}
+
+function ImportQueue() {
+  const [url, setUrl]         = useState('')
+  const [note, setNote]       = useState('')
+  const [submitting, setSub]  = useState(false)
+  const [queue, setQueue]     = useState([])
+  const [loadingQ, setLoadingQ] = useState(true)
+
+  async function loadQueue() {
+    const { data } = await supabase
+      .from('pending_imports')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(30)
+    setQueue(data ?? [])
+    setLoadingQ(false)
+  }
+
+  useEffect(() => {
+    loadQueue()
+    // Auto-refresh while any item is pending/processing
+    const id = setInterval(() => {
+      setQueue(q => {
+        if (q.some(i => i.status === 'pending' || i.status === 'processing')) loadQueue()
+        return q
+      })
+    }, 8000)
+    return () => clearInterval(id)
+  }, [])
+
+  async function submit() {
+    const trimmed = url.trim()
+    if (!trimmed) return
+    setSub(true)
+    const { data, error: err } = await supabase
+      .from('pending_imports')
+      .insert({ url: trimmed, note: note.trim() || null, source_type: 'xhs' })
+      .select().single()
+    if (!err && data) setQueue(q => [data, ...q])
+    setUrl(''); setNote(''); setSub(false)
+  }
+
+  async function remove(id) {
+    await supabase.from('pending_imports').delete().eq('id', id)
+    setQueue(q => q.filter(i => i.id !== id))
+  }
+
+  const hasPending = queue.some(i => i.status === 'pending' || i.status === 'processing')
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Manual Import Queue</span>
+        {hasPending && (
+          <span className="text-xs text-blue-600 font-medium animate-pulse">
+            ● Waiting for local sync to process
+          </span>
+        )}
+      </div>
+
+      {/* URL input */}
+      <div className="px-5 py-4 border-b border-gray-100">
+        <p className="text-xs text-gray-400 mb-3">
+          Paste an XHS / rednote URL (full or short link). The local sync script will pick it up on next run — or trigger it manually with <code className="bg-gray-100 px-1 rounded">node scripts/local-sync.js</code>
+        </p>
+        <div className="flex gap-2">
+          <div className="flex-1 space-y-2">
+            <input
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              placeholder="https://xhslink.com/… or rednote.com/…"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+            <input
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Optional note (e.g. 'Jul F1 exhibition')"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand-400"
+            />
+          </div>
+          <button
+            onClick={submit}
+            disabled={submitting || !url.trim()}
+            className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-xl disabled:opacity-40 hover:bg-brand-700 transition-colors self-start"
+          >
+            {submitting ? '…' : 'Queue'}
+          </button>
+        </div>
+      </div>
+
+      {/* Queue list */}
+      {loadingQ ? (
+        <div className="px-5 py-6 text-center text-xs text-gray-400">Loading…</div>
+      ) : queue.length === 0 ? (
+        <div className="px-5 py-6 text-center text-xs text-gray-400">No imports queued yet.</div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {queue.map(item => (
+            <div key={item.id} className="px-5 py-3 flex items-start gap-3">
+              <span className={`mt-0.5 shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLES[item.status] ?? STATUS_STYLES.pending}`}>
+                {item.status}
+              </span>
+              <div className="flex-1 min-w-0">
+                {item.note && <p className="text-xs font-medium text-gray-700 truncate">{item.note}</p>}
+                <p className="text-xs text-gray-400 truncate">{item.url}</p>
+                {item.result && (
+                  <p className={`text-xs mt-0.5 ${item.status === 'failed' ? 'text-red-500' : 'text-green-600'}`}>
+                    {item.status === 'failed'
+                      ? item.result.error
+                      : `${item.result.new_events ?? 0} event${item.result.new_events !== 1 ? 's' : ''} imported${item.result.titles?.length ? ': ' + item.result.titles.join(', ') : ''}`}
+                  </p>
+                )}
+                <p className="text-xs text-gray-300 mt-0.5">
+                  Queued {new Date(item.created_at).toLocaleString('en-SG', { dateStyle: 'short', timeStyle: 'short' })}
+                  {item.processed_at && ` · processed ${new Date(item.processed_at).toLocaleString('en-SG', { dateStyle: 'short', timeStyle: 'short' })}`}
+                </p>
+              </div>
+              {(item.status === 'done' || item.status === 'failed') && (
+                <button onClick={() => remove(item.id)} className="text-gray-300 hover:text-red-400 text-xs shrink-0 mt-0.5">✕</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AdminDiscovery() {
   const [sources, setSources]       = useState([])
   const [loading, setLoading]       = useState(true)
@@ -404,6 +539,11 @@ export default function AdminDiscovery() {
             No discovery sources found.
           </div>
         )}
+      </div>
+
+      {/* Manual import queue */}
+      <div className="mt-5">
+        <ImportQueue />
       </div>
 
       {/* Add new source */}

@@ -140,12 +140,14 @@ export default function EventDetailSheet({ event, isSaved, isInCalendar, onWishl
           >
             📅 Calendar
           </button>
-          <button
-            onClick={onSource}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            🔗 Source
-          </button>
+          {event.source_name !== 'XHS' && (
+            <button
+              onClick={onSource}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              🔗 Source
+            </button>
+          )}
         </div>
       </div>
     </div>

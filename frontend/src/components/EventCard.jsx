@@ -152,12 +152,14 @@ export default function EventCard({ event, isSaved, isInCalendar, onWishlist, on
           >
             📅 Calendar
           </button>
-          <button
-            onClick={stop(onSource)}
-            className="flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            🔗 Source
-          </button>
+          {event.source_name !== 'XHS' && (
+            <button
+              onClick={stop(onSource)}
+              className="flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-medium rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              🔗 Source
+            </button>
+          )}
         </div>
       </div>
     </div>

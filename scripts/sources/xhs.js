@@ -130,14 +130,14 @@ async function run(source, supabase) {
 
   if (recent.length === 0) return { new_events: 0, searched: 0, fetched: 0, tokens: 0 }
 
-  // 3. Sort by likes, take top N above threshold
+  // 3. Sort by likes, take top N (filter by threshold only if > 0)
   const candidates = recent
     .sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0))
-    .filter(r => (r.likes ?? 0) >= LIKES_THRESHOLD)
+    .filter(r => LIKES_THRESHOLD === 0 || (r.likes ?? 0) >= LIKES_THRESHOLD)
     .slice(0, MAX_NOTES)
 
   if (candidates.length === 0) {
-    console.log(`[${source.label}] No candidates above ${LIKES_THRESHOLD} likes threshold`)
+    console.log(`[${source.label}] No candidates after filtering`)
     return { new_events: 0, searched: recent.length, fetched: 0, tokens: 0 }
   }
 

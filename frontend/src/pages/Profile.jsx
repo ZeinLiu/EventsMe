@@ -133,7 +133,7 @@ export default function Profile() {
   const { user } = useAuth()
 
   const [members, setMembers] = useState([])
-  const [prefs, setPrefs] = useState({ budget: 100, preferred_days: [], max_distance: 20, notes: '' })
+  const [prefs, setPrefs] = useState({ budget: 100, preferred_days: [], max_distance: 20, notes: '', preferred_language: 'both' })
   const [loadingData, setLoadingData] = useState(true)
 
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -152,7 +152,7 @@ export default function Profile() {
         supabase.from('preferences').select('*').eq('profile_id', user.id).maybeSingle(),
       ])
       if (mems) setMembers(mems)
-      if (p) setPrefs({ budget: p.budget, preferred_days: p.preferred_days ?? [], max_distance: p.max_distance, notes: p.notes ?? '' })
+      if (p) setPrefs({ budget: p.budget, preferred_days: p.preferred_days ?? [], max_distance: p.max_distance, notes: p.notes ?? '', preferred_language: p.preferred_language ?? 'both' })
       setLoadingData(false)
     }
     load()
@@ -315,6 +315,32 @@ export default function Profile() {
             <div className="flex justify-between text-xs text-gray-400 mt-0.5">
               <span>5 km</span><span>50 km</span>
             </div>
+          </div>
+
+          {/* Language preference */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Event language</label>
+            <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm font-medium">
+              {[
+                { value: 'en',   label: 'English' },
+                { value: 'both', label: 'Both' },
+                { value: 'zh',   label: '中文' },
+              ].map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setPrefs((p) => ({ ...p, preferred_language: value }))}
+                  className={`flex-1 py-2 transition-colors ${
+                    prefs.preferred_language === value
+                      ? 'bg-brand-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Filters events on the Events page by language.</p>
           </div>
 
           {/* Notes */}

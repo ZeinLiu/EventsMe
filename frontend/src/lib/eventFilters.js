@@ -13,7 +13,7 @@ export const DEFAULT_FILTERS = {
   admission: 'both',
 }
 
-export function buildEventsQuery(filters) {
+export function buildEventsQuery(filters, { language = 'both' } = {}) {
   let query = supabase
     .from('events')
     .select('*')
@@ -64,6 +64,9 @@ export function buildEventsQuery(filters) {
     const list = filters.audience.join(',')
     query = query.or(`audience.ov.{${list}},audience.is.null`)
   }
+
+  if (language === 'en' || language === 'zh')
+    query = query.eq('language', language)
 
   return query
 }

@@ -138,6 +138,8 @@ export default function Events() {
   const [savedIds, setSavedIds] = useState(new Set())
   const [calendarIds, setCalendarIds] = useState(new Set())
 
+  const [langPref, setLangPref] = useState('both')
+
   const [sortBy, setSortBy] = useState('created-at-desc')
   const [sortOpen, setSortOpen] = useState(false)
 
@@ -150,16 +152,23 @@ export default function Events() {
     setTimeout(() => setToast(null), 2500)
   }
 
-  // Fetch events when filters change
+  // Fetch events when filters or language preference changes
   useEffect(() => {
     setLoading(true)
     setError('')
-    buildEventsQuery(filters).then(({ data, error: err }) => {
+    buildEventsQuery(filters, { language: langPref }).then(({ data, error: err }) => {
       if (err) setError(err.message)
       else setEvents(data ?? [])
       setLoading(false)
     })
-  }, [filters])
+  }, [filters, langPref])
+
+  // Load user language preference
+  useEffect(() => {
+    if (!user) return
+    supabase.from('preferences').select('preferred_language').eq('profile_id', user.id).maybeSingle()
+      .then(({ data }) => { if (data?.preferred_language) setLangPref(data.preferred_language) })
+  }, [user])
 
   // Fetch saved and calendar IDs when user changes
   useEffect(() => {

@@ -43,6 +43,7 @@ interface EventData {
   description: string
   short_summary: string
   category: string
+  audience: string[]
   event_date: string | null
   event_end_date: string | null
   venue: string
@@ -316,6 +317,7 @@ Each event object must have exactly these fields:
   "description": "max 60 words",
   "short_summary": "max 30 words, family-focused, mention age groups if relevant",
   "category": "one of: Kids & Family | Arts & Culture | Food & Lifestyle | Nature & Wildlife | Education & Science | Music & Concerts | Sports & Fitness | Cultural & National | Arts & Performance",
+  "audience": ["one or more of: toddlers, young_kids, kids, teens, adults, all_ages"],
   "event_date": "YYYY-MM-DD or null",
   "event_end_date": "YYYY-MM-DD or null",
   "venue": "venue name and area",
@@ -380,6 +382,7 @@ Rules: skip past events, skip non-Singapore events, skip events without dates. R
           description: event.description ?? null,
           short_summary: event.short_summary ?? null,
           category: event.category ?? null,
+          audience: Array.isArray(event.audience) ? event.audience : null,
           event_date: event.event_date,
           event_end_date: event.event_end_date ?? null,
           venue: event.venue ?? null,

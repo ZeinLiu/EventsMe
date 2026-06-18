@@ -27,15 +27,24 @@ Deno.serve(async (req) => {
     .eq('is_archived', false)
     .select('id')
 
-  if (error) {
+  // Also archive events with no end_date whose start date is past the cutoff
+  const { data: noEndData, error: noEndError } = await supabase
+    .from('events')
+    .update({ is_archived: true })
+    .is('event_end_date', null)
+    .lt('event_date', cutoffDate)
+    .eq('is_archived', false)
+    .select('id')
+
+  if (error || noEndError) {
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error ?? noEndError)?.message }),
       { status: 500, headers: { ...corsHeaders, 'content-type': 'application/json' } },
     )
   }
 
   return new Response(
-    JSON.stringify({ archived: data?.length ?? 0, cutoff_date: cutoffDate }),
+    JSON.stringify({ archived: (data?.length ?? 0) + (noEndData?.length ?? 0), cutoff_date: cutoffDate }),
     { status: 200, headers: { ...corsHeaders, 'content-type': 'application/json' } },
   )
 })

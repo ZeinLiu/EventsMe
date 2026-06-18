@@ -13,37 +13,6 @@ export const DEFAULT_FILTERS = {
   admission: 'both',
 }
 
-export function matchesAudience(event, audiences) {
-  if (audiences.length === 0) return true
-  const text = (
-    (event.category ?? '') + ' ' +
-    (event.short_summary ?? '') + ' ' +
-    (event.description ?? '')
-  ).toLowerCase()
-
-  return audiences.some(a => {
-    if (a === 'toddlers')
-      return text.includes('toddler') || text.includes('baby') || text.includes('infant') ||
-             text.includes('0-3') || text.includes('under 3')
-    if (a === 'young_kids')
-      return text.includes('preschool') || text.includes('4-6') || text.includes('kindergarten') ||
-             text.includes('nursery') || text.includes('aged 4') || text.includes('aged 5') ||
-             text.includes('aged 6')
-    if (a === 'kids')
-      return text.includes('kids') || text.includes('children') || text.includes('7-12') ||
-             text.includes('primary school') || text.includes('aged 7') || text.includes('aged 8') ||
-             text.includes('aged 9') || text.includes('aged 10') || text.includes('aged 11') ||
-             text.includes('aged 12')
-    if (a === 'teens')
-      return text.includes('teen') || text.includes('youth') || text.includes('13-17') ||
-             text.includes('secondary school') || text.includes('adolescent')
-    if (a === 'adults')
-      return text.includes('adult') || text.includes('parent') || text.includes('family') ||
-             text.includes('all ages') || text.includes('everyone')
-    return false
-  })
-}
-
 export function buildEventsQuery(filters) {
   let query = supabase
     .from('events')
@@ -89,6 +58,11 @@ export function buildEventsQuery(filters) {
     query = query.gte('event_date', now.toISOString()).lte('event_date', endMonth.toISOString())
   } else if (filters.date === 'custom' && filters.dateFrom && filters.dateTo) {
     query = query.gte('event_date', filters.dateFrom).lte('event_date', filters.dateTo)
+  }
+
+  if (filters.audience.length > 0) {
+    const list = filters.audience.join(',')
+    query = query.or(`audience.ov.{${list}},audience.is.null`)
   }
 
   return query

@@ -225,7 +225,7 @@ Deno.serve(async (req) => {
             max_tokens: maxTokensPerCall,
             system: `You are an event extraction engine for Singapore. Given SISTIC event listings, return structured event data as a JSON array. Return ONLY events happening in the future (today: ${today}).
 
-Each object must have: title, description (null if unknown), short_summary (max 50 words), category (one of: Kids & Family, Arts & Culture, Food & Lifestyle, Nature & Wildlife, Music & Concerts, Sports & Fitness, Cultural & National, Arts & Performance), event_date (YYYY-MM-DD or null), event_end_date (YYYY-MM-DD or null), venue (null if unknown), price_min (0), price_max (0), is_free (false), source_url, booking_url, image_url (null), source_name ("SISTIC").
+Each object must have: title, description (null if unknown), short_summary (max 30 words), category (one of: Kids & Family, Arts & Culture, Food & Lifestyle, Nature & Wildlife, Music & Concerts, Sports & Fitness, Cultural & National, Arts & Performance), audience (array of one or more: toddlers, young_kids, kids, teens, adults, all_ages), event_date (YYYY-MM-DD or null), event_end_date (YYYY-MM-DD or null), venue (null if unknown), price_min (0), price_max (0), is_free (false), source_url, booking_url, image_url (null), source_name ("SISTIC").
 Return [] if no future events. No markdown.`,
             messages: [{ role: 'user', content: JSON.stringify(cards) }],
           }, claudeApiKey)
@@ -252,7 +252,7 @@ Return [] if no future events. No markdown.`,
         model: 'claude-sonnet-4-6',
         max_tokens: maxTokensPerCall * 2,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        system: `You are an event discovery engine. Search for upcoming events on SISTIC Singapore (sistic.com.sg). Return ONLY a JSON array of events with fields: title, description, short_summary, category, event_date (YYYY-MM-DD), event_end_date, venue, price_min, price_max, is_free, source_url, booking_url, image_url, source_name ("SISTIC"). Today: ${today}. Only future events. No markdown.`,
+        system: `You are an event discovery engine. Search for upcoming events on SISTIC Singapore (sistic.com.sg). Return ONLY a JSON array of events with fields: title, description, short_summary (max 30 words), category, audience (array of: toddlers/young_kids/kids/teens/adults/all_ages), event_date (YYYY-MM-DD), event_end_date, venue, price_min, price_max, is_free, source_url, booking_url, image_url, source_name ("SISTIC"). Today: ${today}. Only future events. No markdown.`,
         messages: [{ role: 'user', content: `Search for: site:sistic.com.sg upcoming events Singapore ${new Date().getFullYear()}\nReturn upcoming SISTIC events as JSON array.` }],
       }, claudeApiKey)
 
@@ -288,7 +288,8 @@ Return [] if no future events. No markdown.`,
   for (const event of dedupedEvents) {
     const { error } = await supabase.from('events').insert({
       title: event.title, description: event.description, short_summary: event.short_summary,
-      category: event.category, event_date: event.event_date, event_end_date: event.event_end_date,
+      category: event.category, audience: Array.isArray((event as any).audience) ? (event as any).audience : null,
+      event_date: event.event_date, event_end_date: event.event_end_date,
       venue: event.venue, price_min: event.price_min, price_max: event.price_max,
       is_free: event.is_free, source_url: event.source_url, booking_url: event.booking_url,
       image_url: event.image_url, source_name: 'SISTIC',

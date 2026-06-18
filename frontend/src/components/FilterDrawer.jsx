@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { buildEventsQuery, matchesAudience, DEFAULT_FILTERS } from '../lib/eventFilters'
+import { buildEventsQuery, DEFAULT_FILTERS } from '../lib/eventFilters'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 
 const AUDIENCE_OPTIONS = [
@@ -55,8 +55,8 @@ export default function FilterDrawer({ open, onClose, filters, onApply }) {
   useEffect(() => {
     async function loadMeta() {
       const [catRes, srcRes] = await Promise.all([
-        supabase.from('events').select('category').eq('is_archived', false).not('category', 'is', null),
-        supabase.from('events').select('source_name').eq('is_archived', false).not('source_name', 'is', null),
+        supabase.from('events').select('category').or('is_archived.is.null,is_archived.eq.false').not('category', 'is', null),
+        supabase.from('events').select('source_name').or('is_archived.is.null,is_archived.eq.false').not('source_name', 'is', null),
       ])
 
       const catCounts = (catRes.data ?? []).reduce((acc, e) => {
@@ -86,8 +86,7 @@ export default function FilterDrawer({ open, onClose, filters, onApply }) {
     if (!open) return
     setDraftCount(null)
     buildEventsQuery(draft).then(({ data }) => {
-      const after = (data ?? []).filter(e => matchesAudience(e, draft.audience))
-      setDraftCount(after.length)
+      setDraftCount((data ?? []).length)
     })
   }, [draft, open])
 

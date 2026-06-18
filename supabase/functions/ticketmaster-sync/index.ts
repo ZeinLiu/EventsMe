@@ -162,7 +162,7 @@ async function generateSummaries(events: EventData[], apiKey: string, maxTokens:
     try {
       const data = await callClaude({
         model: 'claude-sonnet-4-6', max_tokens: maxTokens,
-        system: `For each event write a short_summary of max 50 words, family-focused, for Singapore families. Return ONLY JSON array: [{"idx":number,"summary":"..."}]. No markdown.`,
+        system: `For each event write a short_summary of max 30 words, family-focused, for Singapore families. Return ONLY JSON array: [{"idx":number,"summary":"..."}]. No markdown.`,
         messages: [{ role: 'user', content: JSON.stringify(batch) }],
       }, apiKey)
       tokensUsed += (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0)
@@ -291,7 +291,8 @@ Deno.serve(async (req) => {
   for (const event of dedupedEvents) {
     const { error } = await supabase.from('events').insert({
       title: event.title, description: event.description, short_summary: event.short_summary,
-      category: event.category, event_date: event.event_date, event_end_date: event.event_end_date,
+      category: event.category, audience: Array.isArray((event as any).audience) ? (event as any).audience : null,
+      event_date: event.event_date, event_end_date: event.event_end_date,
       venue: event.venue, price_min: event.price_min, price_max: event.price_max,
       is_free: event.is_free, source_url: event.source_url, booking_url: event.booking_url,
       image_url: event.image_url, source_name: event.source_name, is_archived: false,

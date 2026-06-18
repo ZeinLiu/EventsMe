@@ -11,6 +11,7 @@ interface EventData {
   description: string
   short_summary: string
   category: string
+  audience: string[]
   event_date: string | null
   event_end_date: string | null
   venue: string
@@ -272,9 +273,10 @@ Deno.serve(async (req) => {
             system: `You are an event extraction engine for Singapore. Given RSS feed articles, identify which ones are about upcoming events or activities in Singapore. For each event found return structured JSON. Skip opinion pieces, news articles, and reviews of past events.
 
 Return ONLY a JSON array of events with exactly these fields:
-{"title","description","short_summary","category","event_date","event_end_date","venue","price_min","price_max","is_free","source_url","booking_url","image_url","source_name"}
+{"title","description","short_summary","category","audience","event_date","event_end_date","venue","price_min","price_max","is_free","source_url","booking_url","image_url","source_name"}
 
 category must be one of: Kids & Family, Arts & Culture, Food & Lifestyle, Nature & Wildlife, Education & Science, Music & Concerts, Sports & Fitness, Cultural & National, Arts & Performance
+audience must be an array of one or more of: toddlers, young_kids, kids, teens, adults, all_ages
 event_date format: YYYY-MM-DD or null
 If imageUrl is provided with the article, use it as image_url.
 Today: ${todayStr}. Only include events happening in the future.
@@ -330,6 +332,7 @@ Return [] if no upcoming events found.`,
           description: event.description ?? null,
           short_summary: event.short_summary ?? null,
           category: event.category ?? null,
+          audience: Array.isArray(event.audience) ? event.audience : null,
           event_date: event.event_date,
           event_end_date: event.event_end_date ?? null,
           venue: event.venue ?? null,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { buildEventsQuery, matchesAudience, DEFAULT_FILTERS } from '../lib/eventFilters'
+import { buildEventsQuery, DEFAULT_FILTERS } from '../lib/eventFilters'
 import EventCard from '../components/EventCard'
 import EventDetailSheet from '../components/EventDetailSheet'
 import CalendarBottomSheet from '../components/CalendarBottomSheet'
@@ -20,8 +20,8 @@ const SORT_FNS = {
   'created-at-desc': (a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''),
   'date-asc':        (a, b) => (a.event_date ?? '').localeCompare(b.event_date ?? ''),
   'date-desc':       (a, b) => (b.event_date ?? '').localeCompare(a.event_date ?? ''),
-  'price-asc':       (a, b) => (a.price_min ?? 0) - (b.price_min ?? 0),
-  'price-desc':      (a, b) => (b.price_max ?? 0) - (a.price_max ?? 0),
+  'price-asc':       (a, b) => (a.price_min ?? Infinity) - (b.price_min ?? Infinity),
+  'price-desc':      (a, b) => (b.price_max ?? -Infinity) - (a.price_max ?? -Infinity),
 }
 
 function sortWithNullsLast(fn) {
@@ -170,7 +170,7 @@ export default function Events() {
     showToast('Added to your calendar! 📅')
   }, [])
 
-  const filtered = [...events.filter(e => matchesAudience(e, filters.audience))]
+  const filtered = [...events]
     .sort(sortWithNullsLast(SORT_FNS[sortBy] ?? SORT_FNS['date-asc']))
 
   const activePills = buildActivePills(filters, setFilters)

@@ -146,7 +146,7 @@ async function generateSummaries(
       const data = await callClaude({
         model: 'claude-sonnet-4-6',
         max_tokens: maxTokens,
-        system: `For each event write a short_summary of max 50 words, family-focused, highlighting what makes it special for Singapore families. Return ONLY a JSON array: [{"idx": number, "summary": "..."}]. No markdown.`,
+        system: `For each event write a short_summary of max 30 words, family-focused, highlighting what makes it special for Singapore families. Return ONLY a JSON array: [{"idx": number, "summary": "..."}]. No markdown.`,
         messages: [{ role: 'user', content: JSON.stringify(batch) }],
       }, apiKey)
 
@@ -297,6 +297,7 @@ Deno.serve(async (req) => {
       description: event.description,
       short_summary: event.short_summary,
       category: event.category,
+      audience: Array.isArray((event as any).audience) ? (event as any).audience : null,
       event_date: event.event_date,
       event_end_date: event.event_end_date,
       venue: event.venue,

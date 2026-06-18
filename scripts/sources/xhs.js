@@ -5,6 +5,19 @@ const LIKES_THRESHOLD = parseInt(process.env.LIKES_THRESHOLD  ?? '10')
 const MAX_NOTES       = parseInt(process.env.MAX_NOTES_PER_SOURCE ?? '10')
 const LOOKBACK_DAYS   = parseInt(process.env.LOOKBACK_DAYS    ?? '14')
 
+// Convert any rednote search_result URL to canonical explore URL (xsec_token expires)
+function canonicalUrl(url) {
+  if (!url) return url
+  try {
+    const u = new URL(url)
+    if (u.pathname.startsWith('/search_result/')) {
+      const noteId = u.pathname.split('/').filter(Boolean).pop()
+      return `https://www.rednote.com/explore/${noteId}`
+    }
+  } catch { /* leave as-is */ }
+  return url
+}
+
 // ── opencli wrappers ──────────────────────────────────────────
 
 function searchXHS(query) {
@@ -155,7 +168,7 @@ async function run(source, supabase) {
   for (const c of fresh) {
     console.log(`[${source.label}]   Fetching note: ${c.title?.slice(0, 50) ?? c.url}`)
     const note = fetchNote(c.url)
-    if (note) notes.push({ ...note, url: c.url, published_at: c.published_at })
+    if (note) notes.push({ ...note, url: canonicalUrl(c.url), published_at: c.published_at })
     await new Promise(r => setTimeout(r, 1500))
   }
 
@@ -198,6 +211,7 @@ async function run(source, supabase) {
 
 async function importFromUrl(url, supabase) {
   const today = new Date().toISOString().split('T')[0]
+  url = canonicalUrl(url)
 
   console.log(`[ManualImport] Fetching note: ${url}`)
   const note = fetchNote(url)

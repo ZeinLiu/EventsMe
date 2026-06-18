@@ -197,8 +197,13 @@ export default function Events() {
 
   const handleSource = useCallback((event) => {
     if (!event.source_url) { showToast('No source link available'); return }
+    if (event.source_name === 'XHS') {
+      navigator.clipboard?.writeText(event.source_url)
+      showToast('小红书 link copied — paste it in the XHS app')
+      return
+    }
     window.open(event.source_url, '_blank', 'noopener,noreferrer')
-  }, [])
+  }, [showToast])
 
   const handleCalendarAdded = useCallback((event) => {
     setCalendarIds(prev => new Set([...prev, event.id]))
